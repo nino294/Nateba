@@ -948,7 +948,7 @@ const TeachForm=({lang,user,onBack,onDone})=>{
   );
 };
 
-const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach})=>{
+const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher})=>{
   const t=T[lang];
   const isKa=lang==="ka";
   const isTutor=user.role==="tutor";
@@ -1022,7 +1022,7 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach})=>{
           ))}
         </div>
         <div style={{marginBottom:20}}>
-          <button onClick={()=>setShowPromote(true)} style={{background:"linear-gradient(135deg,#E9A520,#FF7A00)",border:"none",borderRadius:C.radiusLg,padding:"13px 24px",fontSize:14,fontWeight:900,color:"#fff",cursor:"pointer",fontFamily:C.fb,boxShadow:"0 4px 0 #CC7700",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 0 #CC7700";}} onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 4px 0 #CC7700";}}>
+          <button onClick={()=>onPromote&&onPromote()} style={{background:"linear-gradient(135deg,#E9A520,#FF7A00)",border:"none",borderRadius:C.radiusLg,padding:"13px 24px",fontSize:14,fontWeight:900,color:"#fff",cursor:"pointer",fontFamily:C.fb,boxShadow:"0 4px 0 #CC7700",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 0 #CC7700";}} onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 4px 0 #CC7700";}}>
             ✦ {isKa?"პროფილის პრომოცია":"Promote my profile"}
           </button>
         </div>
@@ -1081,14 +1081,14 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach})=>{
       </div>}
 
       {tab==="saved"&&<div>
-        {saved.length===0
+        {(saved||[]).length===0
           ?<div style={{textAlign:"center",padding:"48px 24px"}}>
             <div style={{fontSize:48,marginBottom:12}}>♡</div>
             <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{isKa?"შენახული მასწავლებელი არ არის":"No saved teachers yet"}</div>
             <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24,fontWeight:600}}>{isKa?"გული დააჭირე ბარათზე.":"Tap the heart on any teacher card to save them here."}</div>
           </div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-            {TEACHERS.filter(tv=>saved.includes(tv.id)).map(tv=>{
+            {TEACHERS.filter(tv=>(saved||[]).includes(tv.id)).map(tv=>{
               const catColor=CAT_COLORS[tv.cat]||C.primary;
               return(
                 <div key={tv.id} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 18px",display:"flex",gap:12,alignItems:"center"}}>
@@ -1098,7 +1098,7 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach})=>{
                     <div style={{fontSize:12,color:catColor,fontFamily:C.fb,fontWeight:800}}>{tv.skill}</div>
                     <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>₾{tv.price}/session</div>
                   </div>
-                  <PBtn onClick={()=>openT(tv)} size="sm">{isKa?"ნახვა":"View"}</PBtn>
+                  <PBtn onClick={()=>onOpenTeacher&&onOpenTeacher(tv)} size="sm">{isKa?"ნახვა":"View"}</PBtn>
                 </div>
               );
             })}
@@ -1430,32 +1430,39 @@ const NewsletterForm=({lang})=>{
 };
 
 export default function App(){
-  const [lang,setLang]=useState("en");
+  const [lang,setLang]=useState(()=>{ try{return localStorage.getItem("nateba_lang")||"ka";}catch{return "ka";} });
   const [page,setPage]=useState("home");
-  const [cookieAccepted,setCookieAccepted]=useState(null);
+  const [cookieAccepted,setCookieAccepted]=useState(()=>{ try{return localStorage.getItem("nateba_cookie");}catch{return null;} });
   const [showPromote,setShowPromote]=useState(false);
   const [mobileMenu,setMobileMenu]=useState(false);
-  const acceptCookies=()=>setCookieAccepted("accepted");
-  const declineCookies=()=>setCookieAccepted("declined");
+  const acceptCookies=()=>{setCookieAccepted("accepted");try{localStorage.setItem("nateba_cookie","accepted");}catch{}};
+  const declineCookies=()=>{setCookieAccepted("declined");try{localStorage.setItem("nateba_cookie","declined");}catch{}};
   const [selT,setSelT]=useState(null);
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("all");
   const [catF,setCatF]=useState("all");
   const [pTab,setPTab]=useState("about");
   const [slot,setSlot]=useState(null);
-  const [user,setUser]=useState(null);
+  const [user,setUser]=useState(()=>{ try{const s=localStorage.getItem("nateba_user");return s?JSON.parse(s):null;}catch{return null;} });
   const [authMode,setAuthMode]=useState(null);
   const [videoT,setVideoT]=useState(null);
   const [videoSlot,setVideoSlot]=useState(null);
   const [payment,setPayment]=useState(null);
   const [msgT,setMsgT]=useState(null);
   const [toast,setToast]=useState(null);
-  const [saved,setSaved]=useState([]);
+  const [saved,setSaved]=useState(()=>{ try{return JSON.parse(localStorage.getItem("nateba_saved")||"[]");}catch{return [];} });
 
   const t=T[lang];
   const go=p=>{setPage(p);window.scrollTo(0,0);};
   const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);go("teacher");};
-  const toggleSave=id=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const toggleSave=id=>{
+    if(!user){setAuthMode("login");return;}
+    setSaved(s=>{
+      const n=s.includes(id)?s.filter(x=>x!==id):[...s,id];
+      try{localStorage.setItem("nateba_saved",JSON.stringify(n));}catch{}
+      return n;
+    });
+  };
 
   const [dbTeachers,setDbTeachers]=useState([]);
   const [teachersLoaded,setTeachersLoaded]=useState(false);
@@ -1525,14 +1532,14 @@ export default function App(){
           {user?<>
             <button onClick={()=>go("dashboard")} style={{border:"none",background:"transparent",color:C.muted,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:700}}>{t.nav_dash}</button>
             <Av initials={user.name.slice(0,2).toUpperCase()} bg={C.primary} size={30}/>
-            <button onClick={()=>{setUser(null);go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
+            <button onClick={()=>{setUser(null);try{localStorage.removeItem("nateba_user");}catch{}go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
           </>:<>
             <button onClick={()=>setAuthMode("login")} style={{border:"none",background:"transparent",color:C.mid,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:900}}>{t.nav_login}</button>
             <PBtn onClick={()=>setAuthMode("signup")} size="sm">{t.nav_signup}</PBtn>
           </>}
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2,marginLeft:6}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>{setLang(l);try{localStorage.setItem("nateba_lang",l);}catch{}}} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
             ))}
           </div>
         </div>
@@ -1540,7 +1547,7 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}} id="mobile-nav">
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>{setLang(l);try{localStorage.setItem("nateba_lang",l);}catch{}}} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
             ))}
           </div>
           <button onClick={()=>setMobileMenu(m=>!m)} style={{background:mobileMenu?C.primaryLight:"none",border:`2px solid ${mobileMenu?C.primary:C.border}`,borderRadius:C.radiusSm,width:40,height:40,cursor:"pointer",fontSize:20,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>
@@ -1769,7 +1776,18 @@ export default function App(){
   );
 
   const TeacherProfile=()=>{
-    if(!selT)return null;const tv=selT;const catColor=CAT_COLORS[tv.cat]||C.primary;
+    if(!selT)return null;
+    const tv=selT;
+    const catColor=CAT_COLORS[tv.cat]||C.primary;
+    const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
+
+    useEffect(()=>{
+      // If this is a DB teacher (has firebase_uid), load their slots
+      if(tv.firebase_uid){
+        supabase.from("teacher_slots").select("slot").eq("firebase_uid",tv.firebase_uid)
+          .then(({data})=>{if(data&&data.length>0) setProfileSlots(data.map(s=>s.slot));});
+      }
+    },[tv.id]);
     return(
       <div>
         <div style={{maxWidth:1000,margin:"0 auto",padding:"28px 24px"}}>
@@ -1815,8 +1833,8 @@ export default function App(){
                 {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(day=>(
                   <div key={day} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"12px 13px"}}>
                     <div style={{fontSize:12,fontWeight:900,color:catColor,fontFamily:C.fb,marginBottom:7}}>{day}</div>
-                    {tv.slots.filter(s=>s.startsWith(day)).map(s=><div key={s} style={{fontSize:12,color:C.mid,fontFamily:C.fb,marginBottom:3,fontWeight:700}}>{s.split(" ")[1]}</div>)}
-                    {tv.slots.filter(s=>s.startsWith(day)).length===0&&<div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>—</div>}
+                    {profileSlots.filter(s=>s.startsWith(day)).map(s=><div key={s} style={{fontSize:12,color:C.mid,fontFamily:C.fb,marginBottom:3,fontWeight:700}}>{s.split(" ")[1]}</div>)}
+                    {profileSlots.filter(s=>s.startsWith(day)).length===0&&<div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>—</div>}
                   </div>
                 ))}
               </div>}
@@ -1839,7 +1857,7 @@ export default function App(){
               {tv.offline&&<div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radius,padding:"9px 13px",marginBottom:14,fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{t.bof}</div>}
               <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.bs}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-                {tv.slots.map(s=>(
+                {profileSlots.map(s=>(
                   <button key={s} onClick={()=>setSlot(s)} style={{padding:"8px 4px",border:`2px solid ${slot===s?catColor:C.border}`,borderRadius:C.radiusSm,background:slot===s?catColor+"15":C.bg2,color:slot===s?catColor:C.muted,fontSize:10,fontFamily:C.fb,fontWeight:900,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>{s}</button>
                 ))}
               </div>
@@ -1913,7 +1931,7 @@ export default function App(){
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
       {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")}/>}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT}/>}}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
