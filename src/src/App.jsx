@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+const googleProvider = new GoogleAuthProvider();
 import { createClient } from "@supabase/supabase-js";
 
 const firebaseApp = initializeApp({
@@ -98,7 +99,7 @@ const T = {
     search_ph:"რისი სწავლა გინდა?",
     fa:"ყველა",fo:"ონლაინ",ff:"ოფლაინ",
     st:"გადამოწმებული მასწავლებელი",ss:"მოსწავლე",sk:"დარგი",sr:"საშ. რეიტინგი",
-    sc:"რის სწავლა გინდა?",sf:"რჩეული მასწავლებლები",sf2:"პირადად გადამოწმებული",
+    sc:"რისი სწავლა გინდა?",sf:"რჩეული მასწავლებლები",sf2:"პირადად გადამოწმებული",
     sg:"ჯგუფური გაკვეთილები",sg2:"",
     ht:"როგორ მუშაობს",
     h1t:"იპოვე მასწავლებელი",h1d:"მოძებნე უნარით ან კატეგორიით.",
@@ -355,6 +356,19 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
   const [otp,setOtp]=useState(["","","","","",""]);const [loading,setLoading]=useState(false);
   const refs=useRef([]);
   const [confirmResult,setConfirmResult]=useState(null);
+  const signInWithGoogle=async()=>{
+    setLoading(true);
+    try{
+      const result=await signInWithPopup(fbAuth,googleProvider);
+      const uid=result.user.uid;
+      const displayName=result.user.displayName||result.user.email||"User";
+      const email=result.user.email||null;
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:displayName,email,role},{onConflict:"firebase_uid"}).select().single();
+      if(error)throw error;
+      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
+    }catch(err){console.error(err);alert("Google sign-in failed. Please try again.");}
+    setLoading(false);
+  };
   const handleOtp=(i,val)=>{if(!/^\d*$/.test(val))return;const n=[...otp];n[i]=val.slice(-1);setOtp(n);if(val&&i<5)refs.current[i+1]?.focus();};
   const handleKey=(i,e)=>{if(e.key==="Backspace"&&!otp[i]&&i>0)refs.current[i-1]?.focus();};
   const sendOtp=async()=>{
@@ -396,6 +410,11 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
           <button onClick={onClose} style={{background:C.bg2,border:"none",borderRadius:C.radiusSm,width:34,height:34,fontSize:18,cursor:"pointer",color:C.muted,fontWeight:700}}>×</button>
         </div>
         {step==="form"&&<>
+          <button onClick={signInWithGoogle} disabled={loading} style={{width:"100%",padding:"13px",background:"#fff",border:"2px solid #E0EEF7",borderRadius:"20px",fontSize:14,fontFamily:"'Nunito',sans-serif",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:16,color:"#1A1A1A",transition:"all 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#1CB0F6"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E0EEF7"}>
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.09-6.09C34.46 3.05 29.5 1 24 1 14.82 1 7.07 6.48 3.58 14.18l7.09 5.51C12.3 13.56 17.67 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.96-2.2 5.47-4.68 7.15l7.19 5.59C43.18 37.27 46.5 31.32 46.5 24.5z"/><path fill="#FBBC05" d="M10.67 28.31A14.6 14.6 0 0 1 9.5 24c0-1.5.26-2.95.71-4.31l-7.09-5.51A23.93 23.93 0 0 0 0 24c0 3.87.92 7.53 2.54 10.77l8.13-6.46z"/><path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.94l-7.19-5.59C28.5 37.96 26.35 38.5 24 38.5c-6.33 0-11.7-4.06-13.33-9.69l-8.13 6.46C6.07 42.52 14.46 47 24 47z"/></svg>
+            {lang==="ka"?"Google-ით შესვლა":"Continue with Google"}
+          </button>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{flex:1,height:1,background:"#E0EEF7"}}/><span style={{fontSize:12,color:"#777",fontFamily:"'Nunito',sans-serif",fontWeight:700}}>{lang==="ka"?"ან":"or"}</span><div style={{flex:1,height:1,background:"#E0EEF7"}}/></div>
           <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{mode==="login"?t.lt:t.st2}</div>
           <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:22}}>
             {mode==="login"?<>{t.lna} <span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>setMode("signup")}>{t.lc}</span></>:<>{t.sha} <span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>setMode("login")}>{t.shl}</span></>}
@@ -415,7 +434,7 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
           <div style={{marginBottom:16}}>
             <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{t.sph}</label>
             <div style={{display:"flex",gap:8}}>
-              <div style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"13px 16px",fontSize:14,fontFamily:C.fb,color:C.muted,fontWeight:700,flexShrink:0}}>+995</div>
+              
               <input value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,"").slice(0,9))} placeholder="555 000 000" type="tel"
                 style={{flex:1,padding:"13px 16px",background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none"}}
                 onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
@@ -430,7 +449,7 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
         </>}
         {step==="otp"&&<>
           <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{t.ot}</div>
-          <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:32}}>{t.os} <strong>+995 {phone}</strong></div>
+          <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:32}}>{t.os} <strong>{phone}</strong></div>
           <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:32}}>
             {otp.map((d,i)=>(
               <input key={i} ref={el=>refs.current[i]=el} value={d} onChange={e=>handleOtp(i,e.target.value)} onKeyDown={e=>handleKey(i,e)}
@@ -986,7 +1005,7 @@ const NewsletterForm=({lang})=>{
 };
 
 export default function App(){
-  const [lang,setLang]=useState("en");
+  const [lang,setLang]=useState(()=>localStorage.getItem("nateba_lang")||"ka");
   const [page,setPage]=useState("home");
   const [cookieAccepted,setCookieAccepted]=useState(()=>localStorage.getItem("nateba_cookie"));
   const [showPromote,setShowPromote]=useState(false);
@@ -1042,7 +1061,7 @@ export default function App(){
           </>}
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2,marginLeft:6}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>{setLang(l);localStorage.setItem("nateba_lang",l);}} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
             ))}
           </div>
         </div>
@@ -1050,7 +1069,7 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}} id="mobile-nav">
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>{setLang(l);localStorage.setItem("nateba_lang",l);}} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
             ))}
           </div>
           <button onClick={()=>setMobileMenu(m=>!m)} style={{background:mobileMenu?C.primaryLight:"none",border:`2px solid ${mobileMenu?C.primary:C.border}`,borderRadius:C.radiusSm,width:40,height:40,cursor:"pointer",fontSize:20,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>
