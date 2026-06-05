@@ -948,7 +948,7 @@ const TeachForm=({lang,user,onBack,onDone})=>{
   );
 };
 
-const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher})=>{
+const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher,onBrowse})=>{
   const t=T[lang];
   const isKa=lang==="ka";
   const isTutor=user.role==="tutor";
@@ -1069,7 +1069,7 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTe
           <div style={{textAlign:"center",padding:"32px 24px"}}>
             <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={80}/></div>
             <div style={{color:C.muted,fontFamily:C.fb,fontSize:15,fontWeight:600}}>{t.dem}</div>
-            <div style={{marginTop:16}}><PBtn size="sm">{isKa?"მასწავლებლის პოვნა":"Find a teacher"}</PBtn></div>
+            <div style={{marginTop:16}}><PBtn onClick={()=>onBrowse&&onBrowse()} size="sm">{isKa?"მასწავლებლის პოვნა":"Find a teacher"}</PBtn></div>
           </div>
         )}
       </div>}
@@ -1429,6 +1429,108 @@ const NewsletterForm=({lang})=>{
   );
 };
 
+const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
+  const catColor=CAT_COLORS[tv.cat]||C.primary;
+  const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
+
+  useEffect(()=>{
+    setProfileSlots(tv.slots||[]);
+    if(tv.firebase_uid){
+      supabase.from("teacher_slots").select("slot").eq("firebase_uid",tv.firebase_uid)
+        .then(({data})=>{if(data&&data.length>0) setProfileSlots(data.map(s=>s.slot));});
+    }
+  },[tv.id,tv.firebase_uid]);
+
+  const video=tv.video||tv.video_url||null;
+
+  return(
+    <div>
+      <div style={{maxWidth:1000,margin:"0 auto",padding:"28px 24px"}}>
+        <button onClick={()=>go("browse")} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:13,cursor:"pointer",marginBottom:20,padding:0,fontWeight:900}}>← {t.back}</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:24,alignItems:"start"}}>
+          <div>
+            <div style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:24,marginBottom:18,overflow:"hidden",boxShadow:C.shadow}}>
+              <div style={{height:6,background:catColor,margin:"-24px -24px 24px",borderRadius:"18px 18px 0 0"}}/>
+              <div style={{display:"flex",gap:18,alignItems:"flex-start"}}>
+                <Av initials={tv.av} bg={catColor} size={72}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{tv.name}</div>
+                  <div style={{fontSize:14,color:catColor,fontFamily:C.fb,fontWeight:900,marginBottom:10}}>{lang==="ka"?tv.ska:tv.skill}</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
+                    <Stars r={tv.rating||5} s={14}/><span style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{tv.rating||5} ({tv.reviews||0} {t.cr})</span>
+                    {tv.online&&<Badge color="#58CC02">{t.con}</Badge>}
+                    {tv.offline&&<Badge color="#4A90D9">{t.cof}</Badge>}
+                  </div>
+                  <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{t.cre} {tv.resp||"2 hrs"}</div>
+                </div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.border}`,marginBottom:20}}>
+              {[["about",t.pa],["reviews",t.pr],["availability",t.pav],["packages",t.pp]].map(([tab,l])=>(
+                <button key={tab} onClick={()=>setPTab(tab)} style={{padding:"10px 16px",border:"none",background:"none",fontSize:13,color:pTab===tab?catColor:C.muted,fontFamily:C.fb,cursor:"pointer",fontWeight:pTab===tab?900:600,borderBottom:`3px solid ${pTab===tab?catColor:"transparent"}`,marginBottom:-2,transition:"all 0.15s"}}>{l}</button>
+              ))}
+            </div>
+            {pTab==="about"&&<>
+              {video&&<div style={{marginBottom:20,borderRadius:C.radiusLg,overflow:"hidden",border:`2px solid ${C.border}`,position:"relative",paddingBottom:"56.25%",height:0}}>
+                <iframe src={video.replace("watch?v=","embed/").replace("youtu.be/","www.youtube.com/embed/").replace("vimeo.com/","player.vimeo.com/video/")} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}} allowFullScreen title="Teacher intro"/>
+              </div>}
+              <p style={{fontSize:14,color:C.mid,fontFamily:C.fb,lineHeight:1.85,marginBottom:18,fontWeight:600}}>{lang==="ka"?(tv.bka||tv.bio||""):(tv.bio||tv.bka||"")}</p>
+              <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.psp}</div>
+              <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{(tv.speaks||["Georgian"]).map(s=><Badge key={s} color={catColor}>{s}</Badge>)}</div>
+            </>}
+            {pTab==="reviews"&&(tv.rl||[]).map((r,i)=>(
+              <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"14px 16px",marginBottom:10}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,fontWeight:900,color:C.text,fontFamily:C.fb}}>{r.n}</span><Stars r={r.r} s={13}/></div>
+                <div style={{fontSize:13,color:C.mid,fontFamily:C.fb,lineHeight:1.6,fontWeight:600}}>{r.t}</div>
+              </div>
+            ))}
+            {pTab==="reviews"&&(tv.rl||[]).length===0&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>{lang==="ka"?"შეფასება ჯერ არ არის":"No reviews yet"}</div>}
+            {pTab==="availability"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
+              {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(day=>(
+                <div key={day} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"12px 13px"}}>
+                  <div style={{fontSize:12,fontWeight:900,color:catColor,fontFamily:C.fb,marginBottom:7}}>{day}</div>
+                  {profileSlots.filter(s=>s.startsWith(day)).map(s=><div key={s} style={{fontSize:12,color:C.mid,fontFamily:C.fb,marginBottom:3,fontWeight:700}}>{s.split(" ")[1]}</div>)}
+                  {profileSlots.filter(s=>s.startsWith(day)).length===0&&<div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>—</div>}
+                </div>
+              ))}
+            </div>}
+            {pTab==="packages"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {(tv.pkgs||[]).length===0&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>{lang==="ka"?"პაკეტი ჯერ არ არის":"No packages yet"}</div>}
+              {(tv.pkgs||[]).map((pkg,i)=>(
+                <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div><div style={{fontSize:15,fontWeight:900,color:C.text,fontFamily:C.fb}}>{pkg.n} {t.pks}</div><div style={{fontSize:12,color:C.ok,fontFamily:C.fb,fontWeight:800,marginTop:3}}>{t.pksa} ₾{pkg.s} 🎉</div></div>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:900,color:catColor,fontFamily:C.fb}}>₾{pkg.p}</div><button onClick={()=>{if(!user){setAuthMode("login");}else{setPayment({item:{...tv,pkgPrice:pkg.p},slot:`${pkg.n} sessions`});}}} style={{marginTop:6,background:C.accent,color:"#fff",border:"none",borderRadius:C.radiusSm,padding:"7px 16px",fontSize:12,fontWeight:900,fontFamily:C.fb,cursor:"pointer",boxShadow:`0 3px 0 ${C.accentHover}`}}>{lang==="ka"?"ყიდვა":"Buy"}</button></div>
+                </div>
+              ))}
+            </div>}
+          </div>
+          <div style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:22,position:"sticky",top:80,boxShadow:C.shadowMd}}>
+            <div style={{fontSize:28,fontWeight:900,color:C.text,fontFamily:C.fb}}>₾{tv.price}</div>
+            <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,fontWeight:600,marginBottom:16}}>{t.cl}</div>
+            <div style={{background:C.accentLight,border:`2px solid ${C.accent}44`,borderRadius:C.radius,padding:"12px 16px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:C.mid,fontFamily:C.fb,fontWeight:800}}>{t.bt} 🎯</span>
+              <span style={{fontSize:20,fontWeight:900,color:C.accent,fontFamily:C.fb}}>₾{tv.trial||tv.trial_price||15}</span>
+            </div>
+            {tv.offline&&<div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radius,padding:"9px 13px",marginBottom:14,fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{t.bof}</div>}
+            <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.bs}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
+              {profileSlots.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",fontSize:12,color:C.muted,fontFamily:C.fb,padding:"8px 0"}}>{lang==="ka"?"ხელმისაწვდომი დრო არ არის":"No slots available yet"}</div>}
+              {profileSlots.map(s=>(
+                <button key={s} onClick={()=>setSlot(s)} style={{padding:"8px 4px",border:`2px solid ${slot===s?catColor:C.border}`,borderRadius:C.radiusSm,background:slot===s?catColor+"15":C.bg2,color:slot===s?catColor:C.muted,fontSize:10,fontFamily:C.fb,fontWeight:900,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>{s}</button>
+              ))}
+            </div>
+            <PBtn onClick={()=>{if(!slot)return;if(!user){setAuthMode("login");}else{setPayment({item:tv,slot});}}} full disabled={!slot} size="lg">{t.bc}</PBtn>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
+              <OBtn onClick={()=>{if(!user){setAuthMode("login");}else{setMsgT(tv);}}} full size="sm">{t.mb}</OBtn>
+              <OBtn onClick={()=>{if(!user){setAuthMode("login");}else{setVideoT(tv);setVideoSlot(slot);}}} full size="sm">{t.bv}</OBtn>
+            </div>
+          </div>
+        </div>
+      </div><Footer/>
+    </div>
+  );
+};
+
 export default function App(){
   const [lang,setLang]=useState(()=>{ try{return localStorage.getItem("nateba_lang")||"ka";}catch{return "ka";} });
   const [page,setPage]=useState("home");
@@ -1777,102 +1879,9 @@ export default function App(){
 
   const TeacherProfile=()=>{
     if(!selT)return null;
-    const tv=selT;
-    const catColor=CAT_COLORS[tv.cat]||C.primary;
-    const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
-
-    useEffect(()=>{
-      // If this is a DB teacher (has firebase_uid), load their slots
-      if(tv.firebase_uid){
-        supabase.from("teacher_slots").select("slot").eq("firebase_uid",tv.firebase_uid)
-          .then(({data})=>{if(data&&data.length>0) setProfileSlots(data.map(s=>s.slot));});
-      }
-    },[tv.id]);
-    return(
-      <div>
-        <div style={{maxWidth:1000,margin:"0 auto",padding:"28px 24px"}}>
-          <button onClick={()=>go("browse")} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:13,cursor:"pointer",marginBottom:20,padding:0,fontWeight:900}}>← {t.back}</button>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 290px",gap:24,alignItems:"start"}}>
-            <div>
-              <div style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:24,marginBottom:18,overflow:"hidden",boxShadow:C.shadow}}>
-                <div style={{height:6,background:catColor,margin:"-24px -24px 24px",borderRadius:"18px 18px 0 0"}}/>
-                <div style={{display:"flex",gap:18,alignItems:"flex-start"}}>
-                  <Av initials={tv.av} bg={catColor} size={72}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{tv.name}</div>
-                    <div style={{fontSize:14,color:catColor,fontFamily:C.fb,fontWeight:900,marginBottom:10}}>{lang==="ka"?tv.ska:tv.skill}</div>
-                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:8}}>
-                      <Stars r={tv.rating} s={14}/><span style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{tv.rating} ({tv.reviews} {t.cr})</span>
-                      {tv.online&&<Badge color="#58CC02">{t.con}</Badge>}
-                      {tv.offline&&<Badge color="#4A90D9">{t.cof}</Badge>}
-                    </div>
-                    <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{t.cre} {tv.resp}</div>
-                  </div>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.border}`,marginBottom:20}}>
-                {[["about",t.pa],["reviews",t.pr],["availability",t.pav],["packages",t.pp]].map(([tab,l])=>(
-                  <button key={tab} onClick={()=>setPTab(tab)} style={{padding:"10px 16px",border:"none",background:"none",fontSize:13,color:pTab===tab?catColor:C.muted,fontFamily:C.fb,cursor:"pointer",fontWeight:pTab===tab?900:600,borderBottom:`3px solid ${pTab===tab?catColor:"transparent"}`,marginBottom:-2,transition:"all 0.15s"}}>{l}</button>
-                ))}
-              </div>
-              {pTab==="about"&&<>
-                {tv.video&&<div style={{marginBottom:20,borderRadius:C.radiusLg,overflow:"hidden",border:`2px solid ${C.border}`,position:"relative",paddingBottom:"56.25%",height:0}}>
-                  <iframe src={tv.video.replace("watch?v=","embed/").replace("youtu.be/","www.youtube.com/embed/").replace("vimeo.com/","player.vimeo.com/video/")} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",border:"none"}} allowFullScreen title="Teacher intro"/>
-                </div>}
-                <p style={{fontSize:14,color:C.mid,fontFamily:C.fb,lineHeight:1.85,marginBottom:18,fontWeight:600}}>{lang==="ka"?tv.bka:tv.bio}</p>
-                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.psp}</div>
-                <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{tv.speaks.map(s=><Badge key={s} color={catColor}>{s}</Badge>)}</div>
-              </>}
-              {pTab==="reviews"&&tv.rl.map((r,i)=>(
-                <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"14px 16px",marginBottom:10}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,fontWeight:900,color:C.text,fontFamily:C.fb}}>{r.n}</span><Stars r={r.r} s={13}/></div>
-                  <div style={{fontSize:13,color:C.mid,fontFamily:C.fb,lineHeight:1.6,fontWeight:600}}>{r.t}</div>
-                </div>
-              ))}
-              {pTab==="availability"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
-                {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(day=>(
-                  <div key={day} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,padding:"12px 13px"}}>
-                    <div style={{fontSize:12,fontWeight:900,color:catColor,fontFamily:C.fb,marginBottom:7}}>{day}</div>
-                    {profileSlots.filter(s=>s.startsWith(day)).map(s=><div key={s} style={{fontSize:12,color:C.mid,fontFamily:C.fb,marginBottom:3,fontWeight:700}}>{s.split(" ")[1]}</div>)}
-                    {profileSlots.filter(s=>s.startsWith(day)).length===0&&<div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>—</div>}
-                  </div>
-                ))}
-              </div>}
-              {pTab==="packages"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {tv.pkgs.map((pkg,i)=>(
-                  <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div><div style={{fontSize:15,fontWeight:900,color:C.text,fontFamily:C.fb}}>{pkg.n} {t.pks}</div><div style={{fontSize:12,color:C.ok,fontFamily:C.fb,fontWeight:800,marginTop:3}}>{t.pksa} ₾{pkg.s} 🎉</div></div>
-                    <div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:900,color:catColor,fontFamily:C.fb}}>₾{pkg.p}</div><button onClick={()=>{if(!user){setAuthMode("login");}else{setPayment({item:{...tv,pkgPrice:pkg.p},slot:`${pkg.n} sessions`});}}} style={{marginTop:6,background:C.accent,color:"#fff",border:"none",borderRadius:C.radiusSm,padding:"7px 16px",fontSize:12,fontWeight:900,fontFamily:C.fb,cursor:"pointer",boxShadow:`0 3px 0 ${C.accentHover}`}}>{lang==="ka"?"ყიდვა":"Buy"}</button></div>
-                  </div>
-                ))}
-              </div>}
-            </div>
-            <div style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:22,position:"sticky",top:80,boxShadow:C.shadowMd}}>
-              <div style={{fontSize:28,fontWeight:900,color:C.text,fontFamily:C.fb}}>₾{tv.price}</div>
-              <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,fontWeight:600,marginBottom:16}}>{t.cl}</div>
-              <div style={{background:C.accentLight,border:`2px solid ${C.accent}44`,borderRadius:C.radius,padding:"12px 16px",marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontSize:13,color:C.mid,fontFamily:C.fb,fontWeight:800}}>{t.bt} 🎯</span>
-                <span style={{fontSize:20,fontWeight:900,color:C.accent,fontFamily:C.fb}}>₾{tv.trial}</span>
-              </div>
-              {tv.offline&&<div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radius,padding:"9px 13px",marginBottom:14,fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{t.bof}</div>}
-              <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.bs}</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-                {profileSlots.map(s=>(
-                  <button key={s} onClick={()=>setSlot(s)} style={{padding:"8px 4px",border:`2px solid ${slot===s?catColor:C.border}`,borderRadius:C.radiusSm,background:slot===s?catColor+"15":C.bg2,color:slot===s?catColor:C.muted,fontSize:10,fontFamily:C.fb,fontWeight:900,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>{s}</button>
-                ))}
-              </div>
-              <PBtn onClick={()=>{if(!slot)return;if(!user){setAuthMode("login");}else{setPayment({item:tv,slot});}}} full disabled={!slot} size="lg">{t.bc}</PBtn>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
-                <OBtn onClick={()=>{if(!user){setAuthMode("login");}else{setMsgT(tv);}}} full size="sm">{t.mb}</OBtn>
-                <OBtn onClick={()=>{if(!user){setAuthMode("login");}else{setVideoT(tv);setVideoSlot(slot);}}} full size="sm">{t.bv}</OBtn>
-              </div>
-            </div>
-          </div>
-        </div><Footer/>
-      </div>
-    );
+    return <TeacherProfileView tv={selT} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/>;
   };
-
+      <div>
   const GroupsPage=()=>(
     <div>
       <div style={{background:"linear-gradient(135deg,#E0F4FF,#FFFFFF)",padding:"36px 24px 28px",borderBottom:`2px solid ${C.border}`}}>
@@ -1931,7 +1940,7 @@ export default function App(){
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
       {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT}/>}}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT} onBrowse={()=>go("browse")}/>}}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
