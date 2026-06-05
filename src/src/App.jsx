@@ -599,13 +599,31 @@ const MsgModal=({teacher,lang,onClose})=>{
   );
 };
 
-const TeachPage=({lang,onBack,user})=>{
+const TeachPage=({lang,onBack,user,onLogin})=>{
   const t=T[lang];
   const isKa=lang==="ka";
   const [f,setF]=useState({name:user?.name||"",cat:"school",skill:"",price:"",bio:"",video:"",online:true,offline:false});
   const [done,setDone]=useState(false);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState("");
+
+  // If not logged in, show login wall immediately
+  if(!user) return(
+    <div style={{minHeight:"60vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🎓</div>
+      <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:8}}>
+        {isKa?"ასწავლე Nateba-ზე":"Teach on Nateba"}
+      </div>
+      <div style={{fontSize:15,color:C.muted,fontFamily:C.fb,marginBottom:28,lineHeight:1.6,maxWidth:360}}>
+        {isKa?"განაცხადის გასაგზავნად გთხოვთ შეხვიდეთ ანგარიშში ან შექმნათ ანგარიში.":"Please log in or create an account to apply as a teacher."}
+      </div>
+      <div style={{display:"flex",gap:12,flexWrap:"wrap",justifyContent:"center"}}>
+        <PBtn onClick={()=>onLogin("signup")} size="lg">{isKa?"ანგარიშის შექმნა":"Create account"}</PBtn>
+        <OBtn onClick={()=>onLogin("login")} size="lg">{isKa?"შესვლა":"Log in"}</OBtn>
+      </div>
+      <button onClick={onBack} style={{marginTop:20,background:"none",border:"none",color:C.muted,fontFamily:C.fb,fontSize:13,cursor:"pointer",fontWeight:700}}>← {t.back}</button>
+    </div>
+  );
 
   const submit=async()=>{
     if(!f.name||!f.skill||!f.price||!f.bio){
@@ -687,10 +705,7 @@ const TeachPage=({lang,onBack,user})=>{
         ))}
       </div>
       {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>⚠️ {err}</div>}
-      {!user&&<div style={{background:C.accentLight,border:`2px solid ${C.accent}44`,borderRadius:C.radius,padding:"12px 16px",marginBottom:16,fontSize:13,color:C.accent,fontFamily:C.fb,fontWeight:700}}>
-        {isKa?"⚠️ განაცხადის გასაგზავნად გთხოვთ შეხვიდეთ ანგარიშში.":"⚠️ Please log in to submit your application."}
-      </div>}
-      <PBtn onClick={user?submit:undefined} full loading={loading} disabled={!user} size="lg">{t.tsub}</PBtn>
+      <PBtn onClick={submit} full loading={loading} size="lg">{t.tsub}</PBtn>
     </div>
   );
 };
@@ -1611,7 +1626,7 @@ export default function App(){
       {page==="browse"&&<BrowsePage/>}
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
-      {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user}/>}
+      {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
       {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")}/>}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
