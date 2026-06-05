@@ -351,122 +351,109 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
 };
 
 const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
-  const t=T[lang];const [mode,setMode]=useState(initMode||"login");const [step,setStep]=useState("form");
-  const [name,setName]=useState("");const [phone,setPhone]=useState("");const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [role,setRole]=useState("student");
-  const [otp,setOtp]=useState(["","","","","",""]);const [loading,setLoading]=useState(false);
-  const refs=useRef([]);
-  const [confirmResult,setConfirmResult]=useState(null);
+  const t=T[lang];const isKa=lang==="ka";
+  const [mode,setMode]=useState(initMode||"login");
+  const [name,setName]=useState("");const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");
+  const [role,setRole]=useState("student");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
+
   const signInWithGoogle=async()=>{
-    setLoading(true);
+    setLoading(true);setErr("");
     try{
       const result=await signInWithPopup(fbAuth,googleProvider);
       const uid=result.user.uid;
       const displayName=result.user.displayName||result.user.email||"User";
-      const email=result.user.email||null;
-      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:displayName,email,role},{onConflict:"firebase_uid"}).select().single();
+      const userEmail=result.user.email||null;
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:displayName,email:userEmail,role:"student"},{onConflict:"firebase_uid"}).select().single();
       if(error)throw error;
       onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
-    }catch(err){console.error(err);alert("Google sign-in failed. Please try again.");}
+    }catch(err){console.error(err);setErr(isKa?"Google-ით შესვლა ვერ მოხერხდა. სცადეთ ისევ.":"Google sign-in failed. Please try again.");}
     setLoading(false);
   };
-  const handleOtp=(i,val)=>{if(!/^\d*$/.test(val))return;const n=[...otp];n[i]=val.slice(-1);setOtp(n);if(val&&i<5)refs.current[i+1]?.focus();};
-  const handleKey=(i,e)=>{if(e.key==="Backspace"&&!otp[i]&&i>0)refs.current[i-1]?.focus();};
-  const sendOtp=async()=>{
-    if(!phone||phone.length<9){alert("Please enter a valid 9-digit Georgian phone number.");return;}
+
+  const handleSubmit=async()=>{
+    setErr("");
+    if(!email||!pw){setErr(isKa?"შეავსეთ ყველა ველი":"Please fill in all fields");return;}
+    if(mode==="signup"&&!name){setErr(isKa?"შეიყვანეთ სახელი":"Please enter your name");return;}
+    if(mode==="signup"&&pw!==pw2){setErr(isKa?"პაროლები არ ემთხვევა":"Passwords do not match");return;}
+    if(mode==="signup"&&pw.length<6){setErr(isKa?"პაროლი მინიმუმ 6 სიმბოლო":"Password must be at least 6 characters");return;}
     setLoading(true);
     try{
-      if(window.recaptchaVerifier){try{window.recaptchaVerifier.clear();}catch(e){} window.recaptchaVerifier=null;}
-      window.recaptchaVerifier=new RecaptchaVerifier(fbAuth,"recaptcha-container",{size:"invisible"});
-      const result=await signInWithPhoneNumber(fbAuth,"+995"+phone.replace(/\s/g,""),window.recaptchaVerifier);
-      setConfirmResult(result);
-      setStep("otp");
-    }catch(err){
-      console.error(err);
-      alert("Could not send SMS. Please check the number and try again.");
-      if(window.recaptchaVerifier){try{window.recaptchaVerifier.clear();}catch(e){} window.recaptchaVerifier=null;}
+      const{createUserWithEmailAndPassword,signInWithEmailAndPassword,updateProfile}=await import("firebase/auth");
+      let firebaseUser;
+      if(mode==="signup"){
+        const cred=await createUserWithEmailAndPassword(fbAuth,email,pw);
+        firebaseUser=cred.user;
+        await updateProfile(firebaseUser,{displayName:name});
+      }else{
+        const cred=await signInWithEmailAndPassword(fbAuth,email,pw);
+        firebaseUser=cred.user;
+      }
+      const uid=firebaseUser.uid;
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:mode==="signup"?name:(firebaseUser.displayName||email.split("@")[0]),email,role:mode==="signup"?role:"student"},{onConflict:"firebase_uid"}).select().single();
+      if(error)throw error;
+      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
+    }catch(e){
+      console.error(e);
+      if(e.code==="auth/user-not-found"||e.code==="auth/wrong-password"||e.code==="auth/invalid-credential"){setErr(isKa?"არასწორი ელ-ფოსტა ან პაროლი":"Wrong email or password");}
+      else if(e.code==="auth/email-already-in-use"){setErr(isKa?"ეს ელ-ფოსტა უკვე გამოყენებულია":"This email is already registered");}
+      else{setErr(isKa?"შეცდომა. სცადეთ ისევ.":"Something went wrong. Please try again.");}
     }
     setLoading(false);
   };
-  const verify=async()=>{
-    if(otp.join("").length<6||!confirmResult)return;
-    setLoading(true);
-    try{
-      const result=await confirmResult.confirm(otp.join(""));
-      const uid=result.user.uid;
-      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:"+995"+phone.replace(/\s/g,""),name:name||phone,email:email||null,role},{onConflict:"firebase_uid"}).select().single();
-      if(error)throw error;
-      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
-    }catch(err){
-      console.error(err);
-      alert("Invalid code. Please try again.");
-    }
-    setLoading(false);
-  };
+
+  const GBtn=({children,onClick,disabled})=>(
+    <button onClick={onClick} disabled={disabled} style={{width:"100%",padding:"13px",background:"#fff",border:"2px solid #E0EEF7",borderRadius:"20px",fontSize:14,fontFamily:"'Nunito',sans-serif",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12,color:"#1A1A1A",transition:"all 0.15s",opacity:disabled?0.6:1}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.borderColor="#1CB0F6";}} onMouseLeave={e=>e.currentTarget.style.borderColor="#E0EEF7"}>
+      {children}
+    </button>
+  );
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9996,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(8px)"}}>
-      <div style={{background:C.card,borderRadius:C.radiusLg,padding:32,width:"100%",maxWidth:420,boxShadow:C.shadowLg,border:`2px solid ${C.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:28}}>
+      <div style={{background:C.card,borderRadius:C.radiusLg,padding:32,width:"100%",maxWidth:420,boxShadow:C.shadowLg,border:`2px solid ${C.border}`,maxHeight:"92vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
           <Logo onClick={()=>{}}/>
           <button onClick={onClose} style={{background:C.bg2,border:"none",borderRadius:C.radiusSm,width:34,height:34,fontSize:18,cursor:"pointer",color:C.muted,fontWeight:700}}>×</button>
         </div>
-        {step==="form"&&<>
-          <button onClick={signInWithGoogle} disabled={loading} style={{width:"100%",padding:"13px",background:"#fff",border:"2px solid #E0EEF7",borderRadius:"20px",fontSize:14,fontFamily:"'Nunito',sans-serif",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:16,color:"#1A1A1A",transition:"all 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor="#1CB0F6"} onMouseLeave={e=>e.currentTarget.style.borderColor="#E0EEF7"}>
-            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.09-6.09C34.46 3.05 29.5 1 24 1 14.82 1 7.07 6.48 3.58 14.18l7.09 5.51C12.3 13.56 17.67 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.96-2.2 5.47-4.68 7.15l7.19 5.59C43.18 37.27 46.5 31.32 46.5 24.5z"/><path fill="#FBBC05" d="M10.67 28.31A14.6 14.6 0 0 1 9.5 24c0-1.5.26-2.95.71-4.31l-7.09-5.51A23.93 23.93 0 0 0 0 24c0 3.87.92 7.53 2.54 10.77l8.13-6.46z"/><path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.94l-7.19-5.59C28.5 37.96 26.35 38.5 24 38.5c-6.33 0-11.7-4.06-13.33-9.69l-8.13 6.46C6.07 42.52 14.46 47 24 47z"/></svg>
-            {lang==="ka"?"Google-ით შესვლა":"Continue with Google"}
-          </button>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{flex:1,height:1,background:"#E0EEF7"}}/><span style={{fontSize:12,color:"#777",fontFamily:"'Nunito',sans-serif",fontWeight:700}}>{lang==="ka"?"ან":"or"}</span><div style={{flex:1,height:1,background:"#E0EEF7"}}/></div>
-          <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{mode==="login"?t.lt:t.st2}</div>
-          <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:22}}>
-            {mode==="login"?<>{t.lna} <span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>setMode("signup")}>{t.lc}</span></>:<>{t.sha} <span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>setMode("login")}>{t.shl}</span></>}
-          </div>
-          {mode==="signup"&&<>
-            <Inp label={t.sn} value={name} onChange={e=>setName(e.target.value)}/>
-            <div style={{marginBottom:16}}>
-              <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:8}}>{t.sr2}</label>
-              <div style={{display:"flex",gap:8}}>
-                {[["student",t.ssl],["tutor",t.sst]].map(([v,l])=>(
-                  <button key={v} onClick={()=>setRole(v)} style={{flex:1,padding:"13px",border:`2px solid ${role===v?C.accent:C.border}`,borderRadius:C.radius,background:role===v?C.accentLight:C.bg2,color:role===v?C.accent:C.muted,fontSize:14,cursor:"pointer",fontFamily:C.fb,fontWeight:900,transition:"all 0.15s"}}>{l}</button>
-                ))}
-              </div>
-            </div>
-          </>}
-          <Inp label={t.le} type="email" value={email} onChange={e=>setEmail(e.target.value)}/>
+        <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{mode==="login"?(isKa?"კეთილი იყოს თქვენი დაბრუნება!":"Welcome back!"):(isKa?"ანგარიშის შექმნა":"Create account")}</div>
+        <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:20}}>
+          {mode==="login"?<>{isKa?"არ გაქვს ანგარიში? ":"No account? "}<span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>{setMode("signup");setErr("");}}>{isKa?"შექმნა":"Sign up"}</span></>:<>{isKa?"უკვე გაქვს? ":"Have an account? "}<span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>{setMode("login");setErr("");}}>{isKa?"შესვლა":"Log in"}</span></>}
+        </div>
+        <GBtn onClick={signInWithGoogle} disabled={loading}>
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.09-6.09C34.46 3.05 29.5 1 24 1 14.82 1 7.07 6.48 3.58 14.18l7.09 5.51C12.3 13.56 17.67 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.96-2.2 5.47-4.68 7.15l7.19 5.59C43.18 37.27 46.5 31.32 46.5 24.5z"/><path fill="#FBBC05" d="M10.67 28.31A14.6 14.6 0 0 1 9.5 24c0-1.5.26-2.95.71-4.31l-7.09-5.51A23.93 23.93 0 0 0 0 24c0 3.87.92 7.53 2.54 10.77l8.13-6.46z"/><path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.94l-7.19-5.59C28.5 37.96 26.35 38.5 24 38.5c-6.33 0-11.7-4.06-13.33-9.69l-8.13 6.46C6.07 42.52 14.46 47 24 47z"/></svg>
+          {isKa?"Google-ით შესვლა":"Continue with Google"}
+        </GBtn>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700}}>{isKa?"ან ელ-ფოსტით":"or with email"}</span><div style={{flex:1,height:1,background:C.border}}/></div>
+        {mode==="signup"&&<>
+          <Inp label={isKa?"სახელი და გვარი":"Full name"} value={name} onChange={e=>setName(e.target.value)}/>
           <div style={{marginBottom:16}}>
-            <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{t.sph}</label>
+            <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:8}}>{isKa?"მე მინდა":"I want to"}</label>
             <div style={{display:"flex",gap:8}}>
-              
-              <input value={phone} onChange={e=>setPhone(e.target.value.replace(/\D/g,"").slice(0,9))} placeholder="555 000 000" type="tel"
-                style={{flex:1,padding:"13px 16px",background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none"}}
-                onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
+              {[["student",isKa?"სწავლა":"Learn"],["tutor",isKa?"სწავლება":"Teach"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setRole(v)} style={{flex:1,padding:"13px",border:`2px solid ${role===v?C.accent:C.border}`,borderRadius:C.radius,background:role===v?C.accentLight:C.bg2,color:role===v?C.accent:C.muted,fontSize:14,cursor:"pointer",fontFamily:C.fb,fontWeight:900,transition:"all 0.15s"}}>{l}</button>
+              ))}
             </div>
           </div>
-          {mode==="login"&&<Inp label={t.lp} type="password" value={pw} onChange={e=>setPw(e.target.value)}/>}
-          {mode==="signup"&&<div style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:16,padding:"12px 16px",background:C.bg2,borderRadius:C.radius,border:`2px solid ${C.border}`}}>
-            <input type="checkbox" id="age-check" style={{marginTop:2,flexShrink:0,width:18,height:18,cursor:"pointer",accentColor:C.primary}}/>
-            <label htmlFor="age-check" style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600,lineHeight:1.6,cursor:"pointer"}}>I confirm that I am 18 years or older, or have parental consent. I agree to the <span style={{color:C.primary,fontWeight:800}}>Terms of Service</span> and <span style={{color:C.primary,fontWeight:800}}>Privacy Policy</span>.</label>
-          </div>}
-          <PBtn onClick={mode==="login"?()=>onAuth({name:email.split("@")[0],email,phone,role:"student"}):sendOtp} full loading={loading} disabled={mode==="signup"&&(!name||!phone)} size="lg">{t.sbtn}</PBtn>
         </>}
-        {step==="otp"&&<>
-          <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{t.ot}</div>
-          <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:32}}>{t.os} <strong>{phone}</strong></div>
-          <div style={{display:"flex",gap:10,justifyContent:"center",marginBottom:32}}>
-            {otp.map((d,i)=>(
-              <input key={i} ref={el=>refs.current[i]=el} value={d} onChange={e=>handleOtp(i,e.target.value)} onKeyDown={e=>handleKey(i,e)}
-                maxLength={1} inputMode="numeric"
-                style={{width:52,height:64,textAlign:"center",fontSize:26,fontWeight:900,fontFamily:C.fb,border:`2px solid ${d?C.accent:C.border}`,borderRadius:C.radius,background:d?C.accentLight:C.bg2,color:C.accent,outline:"none",transition:"all 0.15s"}}/>
-            ))}
-          </div>
-          <PBtn onClick={verify} full loading={loading} disabled={otp.join("").length<6} size="lg">{t.ov}</PBtn>
-          <div style={{textAlign:"center",marginTop:16,fontSize:13,color:C.muted,fontFamily:C.fb}}>
-            {t.ore}? <span style={{color:C.primary,cursor:"pointer",fontWeight:900}} onClick={sendOtp}>Resend</span>
-          </div>
-          <button onClick={()=>setStep("form")} style={{display:"block",margin:"12px auto 0",background:"none",border:"none",color:C.muted,fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:700}}>← Change number</button>
-        </>}
+        <Inp label={isKa?"ელ-ფოსტა":"Email"} type="email" value={email} onChange={e=>setEmail(e.target.value)}/>
+        <Inp label={isKa?"პაროლი":"Password"} type="password" value={pw} onChange={e=>setPw(e.target.value)}/>
+        {mode==="signup"&&<Inp label={isKa?"პაროლის დადასტურება":"Confirm password"} type="password" value={pw2} onChange={e=>setPw2(e.target.value)}/>}
+        {mode==="signup"&&<div style={{background:C.bg2,borderRadius:C.radius,padding:"12px 16px",marginBottom:16,fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600,lineHeight:1.6,border:`2px solid ${C.border}`}}>
+          <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
+            <input type="checkbox" style={{marginTop:2,flexShrink:0,width:16,height:16,accentColor:C.primary}}/>
+            <span>{isKa?"ვადასტურებ, რომ 18 წელს გადავაჭარბე. ვეთანხმები ":"I confirm I am 18+ and agree to the "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"მომსახურების პირობებს":"Terms of Service"}</span>{" & "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"კონფიდენციალურობის პოლიტიკას":"Privacy Policy"}</span>.</span>
+          </label>
+        </div>}
+        {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"10px 14px",marginBottom:12,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>{err}</div>}
+        <PBtn onClick={handleSubmit} full loading={loading} size="lg">{mode==="login"?(isKa?"შესვლა":"Log in"):(isKa?"ანგარიშის შექმნა":"Create account")}</PBtn>
+        <div style={{marginTop:20,padding:"14px 16px",background:C.bg2,borderRadius:C.radius,border:`2px solid ${C.border}`}}>
+          <div style={{fontSize:12,fontWeight:900,color:C.muted,fontFamily:C.fb,marginBottom:4}}>{isKa?"📱 ტელეფონით შესვლა":"📱 Sign in with phone"}</div>
+          <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,lineHeight:1.6}}>{isKa?"თუ გსურს ტელეფონის ნომრით შესვლა, გამოგვიგზავნე შეტყობინება: ":"Want to sign in with your phone number? Contact us: "}<a href="mailto:hello@nateba.ge" style={{color:C.primary,fontWeight:800}}>hello@nateba.ge</a></div>
+        </div>
       </div>
     </div>
   );
 };
+
 
 const PayModal=({item,slot,lang,onSuccess,onClose})=>{
   const t=T[lang];const [card,setCard]=useState("");const [exp,setExp]=useState("");const [cvv,setCvv]=useState("");
