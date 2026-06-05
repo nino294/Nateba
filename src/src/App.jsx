@@ -1,4 +1,21 @@
 import { useState, useEffect, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { createClient } from "@supabase/supabase-js";
+
+const firebaseApp = initializeApp({
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+});
+const fbAuth = getAuth(firebaseApp);
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const C = {
   bg:"#FFFFFF", bg2:"#F0F8FF", card:"#FFFFFF",
@@ -337,10 +354,40 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
   const [name,setName]=useState("");const [phone,setPhone]=useState("");const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [role,setRole]=useState("student");
   const [otp,setOtp]=useState(["","","","","",""]);const [loading,setLoading]=useState(false);
   const refs=useRef([]);
+  const [confirmResult,setConfirmResult]=useState(null);
   const handleOtp=(i,val)=>{if(!/^\d*$/.test(val))return;const n=[...otp];n[i]=val.slice(-1);setOtp(n);if(val&&i<5)refs.current[i+1]?.focus();};
   const handleKey=(i,e)=>{if(e.key==="Backspace"&&!otp[i]&&i>0)refs.current[i-1]?.focus();};
-  const sendOtp=()=>{setLoading(true);setTimeout(()=>{setLoading(false);setStep("otp");},1200);};
-  const verify=()=>{if(otp.join("").length<6)return;setLoading(true);setTimeout(()=>{setLoading(false);onAuth({name:mode==="login"?(email.split("@")[0]||phone):name,email,phone,role});},1000);};
+  const sendOtp=async()=>{
+    if(!phone||phone.length<9){alert("Please enter a valid 9-digit Georgian phone number.");return;}
+    setLoading(true);
+    try{
+      if(window.recaptchaVerifier){try{window.recaptchaVerifier.clear();}catch(e){} window.recaptchaVerifier=null;}
+      window.recaptchaVerifier=new RecaptchaVerifier(fbAuth,"recaptcha-container",{size:"invisible"});
+      const result=await signInWithPhoneNumber(fbAuth,"+995"+phone.replace(/\s/g,""),window.recaptchaVerifier);
+      setConfirmResult(result);
+      setStep("otp");
+    }catch(err){
+      console.error(err);
+      alert("Could not send SMS. Please check the number and try again.");
+      if(window.recaptchaVerifier){try{window.recaptchaVerifier.clear();}catch(e){} window.recaptchaVerifier=null;}
+    }
+    setLoading(false);
+  };
+  const verify=async()=>{
+    if(otp.join("").length<6||!confirmResult)return;
+    setLoading(true);
+    try{
+      const result=await confirmResult.confirm(otp.join(""));
+      const uid=result.user.uid;
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:"+995"+phone.replace(/\s/g,""),name:name||phone,email:email||null,role},{onConflict:"firebase_uid"}).select().single();
+      if(error)throw error;
+      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
+    }catch(err){
+      console.error(err);
+      alert("Invalid code. Please try again.");
+    }
+    setLoading(false);
+  };
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9996,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(8px)"}}>
       <div style={{background:C.card,borderRadius:C.radiusLg,padding:32,width:"100%",maxWidth:420,boxShadow:C.shadowLg,border:`2px solid ${C.border}`}}>
@@ -941,11 +988,11 @@ const NewsletterForm=({lang})=>{
 export default function App(){
   const [lang,setLang]=useState("en");
   const [page,setPage]=useState("home");
-  const [cookieAccepted,setCookieAccepted]=useState(null);
+  const [cookieAccepted,setCookieAccepted]=useState(()=>localStorage.getItem("nateba_cookie"));
   const [showPromote,setShowPromote]=useState(false);
   const [mobileMenu,setMobileMenu]=useState(false);
-  const acceptCookies=()=>setCookieAccepted("accepted");
-  const declineCookies=()=>setCookieAccepted("declined");
+  const acceptCookies=()=>{setCookieAccepted("accepted");localStorage.setItem("nateba_cookie","accepted");};
+  const declineCookies=()=>{setCookieAccepted("declined");localStorage.setItem("nateba_cookie","declined");};
   const [selT,setSelT]=useState(null);
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("all");
@@ -959,12 +1006,14 @@ export default function App(){
   const [payment,setPayment]=useState(null);
   const [msgT,setMsgT]=useState(null);
   const [toast,setToast]=useState(null);
-  const [saved,setSaved]=useState([]);
+  const [saved,setSaved]=useState(()=>{try{return JSON.parse(localStorage.getItem("nateba_saved")||"[]");}catch{return [];}});
+
+  useEffect(()=>{const s=localStorage.getItem("nateba_user");if(s){try{setUser(JSON.parse(s));}catch{}}}, []);
 
   const t=T[lang];
   const go=p=>{setPage(p);window.scrollTo(0,0);};
   const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);go("teacher");};
-  const toggleSave=id=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const toggleSave=id=>setSaved(s=>{const n=s.includes(id)?s.filter(x=>x!==id):[...s,id];localStorage.setItem("nateba_saved",JSON.stringify(n));return n;});
   const filtered=TEACHERS.filter(tv=>{
     const ms=(tv.name+tv.skill).toLowerCase().includes(search.toLowerCase());
     const mf=filter==="all"||(filter==="online"&&tv.online)||(filter==="offline"&&tv.offline);
@@ -986,7 +1035,7 @@ export default function App(){
           {user?<>
             <button onClick={()=>go("dashboard")} style={{border:"none",background:"transparent",color:C.muted,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:700}}>{t.nav_dash}</button>
             <Av initials={user.name.slice(0,2).toUpperCase()} bg={C.primary} size={30}/>
-            <button onClick={()=>{setUser(null);go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
+            <button onClick={()=>{setUser(null);localStorage.removeItem("nateba_user");go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
           </>:<>
             <button onClick={()=>setAuthMode("login")} style={{border:"none",background:"transparent",color:C.mid,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:900}}>{t.nav_login}</button>
             <PBtn onClick={()=>setAuthMode("signup")} size="sm">{t.nav_signup}</PBtn>
@@ -1382,7 +1431,7 @@ export default function App(){
       {!["home","browse","teacher","groups","teach","dashboard","tos","pp","faq","about"].includes(page)&&<NotFoundPage onBack={()=>go("home")}/>}
       {!cookieAccepted&&<CookieBanner onAccept={acceptCookies} onDecline={declineCookies} onLearnMore={()=>go('pp')}/>}
       {showPromote&&<PromoteModal lang={lang} onClose={()=>setShowPromote(false)}/>}
-      {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);setAuthMode(null);setToast({msg:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
+      {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);localStorage.setItem("nateba_user",JSON.stringify(u));setAuthMode(null);setToast({msg:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
       {payment&&<PayModal item={payment.item} slot={payment.slot} lang={lang} onSuccess={()=>{setToast({msg:"Session booked! 🎉"});setPayment(null);go("dashboard");}} onClose={()=>setPayment(null)}/>}
       {videoT&&<VideoRoom teacher={videoT} slot={videoSlot} lang={lang} onClose={()=>{setVideoT(null);setVideoSlot(null);}}/>}
       {msgT&&<MsgModal teacher={msgT} lang={lang} onClose={()=>setMsgT(null)}/>}
@@ -1395,7 +1444,7 @@ export default function App(){
             <div style={{fontSize:14,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{lang==="ka"?"შესულია:":"Logged in as"} <strong>{user.name}</strong></div>
             <div style={{display:"flex",gap:8}}>
               <PBtn onClick={()=>{go("dashboard");setMobileMenu(false);}} full size="sm">{t.nav_dash}</PBtn>
-              <OBtn onClick={()=>{setUser(null);go("home");setMobileMenu(false);}} full size="sm">{t.nav_out}</OBtn>
+              <OBtn onClick={()=>{setUser(null);localStorage.removeItem("nateba_user");go("home");setMobileMenu(false);}} full size="sm">{t.nav_out}</OBtn>
             </div>
           </div>:<div style={{display:"flex",gap:8}}>
             <PBtn onClick={()=>{setAuthMode("signup");setMobileMenu(false);}} full>{t.nav_signup}</PBtn>
