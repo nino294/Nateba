@@ -648,8 +648,9 @@ const TeacherProfileEditor=({lang,user,onBack,onSaved})=>{
   };
 
   const save=async()=>{
-    if(!f.name||!f.skill||!f.price||!f.bio){
-      setErr(isKa?"შეავსე სავალდებულო ველები":"Please fill in required fields");return;
+    // Only Georgian fields are required
+    if(!f.name||!f.skill_ka||!f.price||!f.bio_ka){
+      setErr(isKa?"შეავსე სავალდებულო ველები (*)":"Please fill in required fields (*)");return;
     }
     setSaving(true);setErr("");
     try{
@@ -659,11 +660,11 @@ const TeacherProfileEditor=({lang,user,onBack,onSaved})=>{
         name:f.name,
         email:user?.email||null,
         category:f.cat,
-        skill:f.skill,
+        skill:f.skill||f.skill_ka,
         skill_ka:f.skill_ka||f.skill,
         price:parseInt(f.price),
         trial_price:parseInt(f.trial_price||15),
-        bio:f.bio,
+        bio:f.bio||f.bio_ka,
         bio_ka:f.bio_ka||f.bio,
         video_url:f.video||null,
         online:f.online,
@@ -721,8 +722,8 @@ const TeacherProfileEditor=({lang,user,onBack,onSaved})=>{
           </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <Inp label={isKa?"კურსი (ინგლისური) *":"Skill (English) *"} value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder="e.g. Piano"/>
-          <Inp label={isKa?"კურსი (ქართული)":"Skill (Georgian)"} value={f.skill_ka} onChange={e=>setF(p=>({...p,skill_ka:e.target.value}))} placeholder="მაგ: პიანო"/>
+          <Inp label={isKa?"კურსი (ქართული) *":"Skill (Georgian) *"} value={f.skill_ka} onChange={e=>setF(p=>({...p,skill_ka:e.target.value}))} placeholder="მაგ: პიანო"/>
+          <Inp label={isKa?"კურსი (ინგლისური)":"Skill (English)"} value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder="e.g. Piano"/>
         </div>
         <Inp label={isKa?"ენები (მძიმით გამოყოფილი)":"Languages spoken (comma separated)"} value={f.speaks} onChange={e=>setF(p=>({...p,speaks:e.target.value}))} placeholder="Georgian, English"/>
       </div>
@@ -750,8 +751,8 @@ const TeacherProfileEditor=({lang,user,onBack,onSaved})=>{
         <div style={{fontSize:13,fontWeight:900,color:"#A259FF",fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>
           {isKa?"შენ შესახებ":"About you"}
         </div>
-        <Inp label={isKa?"ბიოგრაფია (ინგლისური) *":"Bio (English) *"} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={3} placeholder="Tell students about your experience and teaching style..."/>
-        <Inp label={isKa?"ბიოგრაფია (ქართული)":"Bio (Georgian)"} value={f.bio_ka} onChange={e=>setF(p=>({...p,bio_ka:e.target.value}))} rows={3} placeholder="მოგვიყევი შენს გამოცდილებასა და სტილზე..."/>
+        <Inp label={isKa?"ბიოგრაფია (ქართული) *":"Bio (Georgian) *"} value={f.bio_ka} onChange={e=>setF(p=>({...p,bio_ka:e.target.value}))} rows={3} placeholder="მოგვიყევი შენს გამოცდილებასა და სტილზე..."/>
+        <Inp label={isKa?"ბიოგრაფია (ინგლისური)":"Bio (English)"} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={3} placeholder="Tell students about your experience and teaching style..."/>
         <Inp label={isKa?"ინტრო ვიდეო URL (YouTube / Vimeo)":"Intro video URL (YouTube / Vimeo)"} value={f.video} onChange={e=>setF(p=>({...p,video:e.target.value}))} placeholder="https://youtube.com/watch?v=..."/>
       </div>
 
@@ -888,8 +889,8 @@ const TeachForm=({lang,user,onBack,onDone})=>{
       const{error}=await supabase.from("teacher_applications").insert({
         firebase_uid:user?.uid||user?.phone||null,
         name:f.name,email:user?.email||null,
-        category:f.cat,skill:f.skill,
-        price:parseInt(f.price),bio:f.bio,
+        category:f.cat,skill:f.skill||f.skill_ka,
+        price:parseInt(f.price),bio:f.bio||f.bio_ka,
         video_url:f.video||null,
         online:f.online,offline:f.offline,status:"pending",
       });
@@ -1455,8 +1456,56 @@ export default function App(){
   const go=p=>{setPage(p);window.scrollTo(0,0);};
   const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);go("teacher");};
   const toggleSave=id=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
-  const filtered=TEACHERS.filter(tv=>{
-    const ms=(tv.name+tv.skill).toLowerCase().includes(search.toLowerCase());
+
+  const [dbTeachers,setDbTeachers]=useState([]);
+  const [teachersLoaded,setTeachersLoaded]=useState(false);
+
+  useEffect(()=>{loadTeachers();},[]);
+
+  const loadTeachers=async()=>{
+    try{
+      const{data,error}=await supabase.from("teacher_profiles").select("*").eq("active",true).order("created_at",{ascending:false});
+      if(!error&&data&&data.length>0){
+        // Convert Supabase format to the format the rest of the app expects
+        const mapped=data.map(tp=>({
+          id:tp.id,
+          firebase_uid:tp.firebase_uid,
+          name:tp.name,
+          nka:tp.name,
+          cat:tp.category||"school",
+          skill:tp.skill||tp.skill_ka||"",
+          ska:tp.skill_ka||tp.skill||"",
+          price:tp.price||40,
+          trial:tp.trial_price||15,
+          rating:tp.rating||5.0,
+          reviews:tp.review_count||0,
+          online:tp.online!==false,
+          offline:tp.offline||false,
+          av:(tp.name||"T").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(),
+          bio:tp.bio||tp.bio_ka||"",
+          bka:tp.bio_ka||tp.bio||"",
+          speaks:tp.speaks||["Georgian"],
+          resp:tp.response_time||"2 hrs",
+          slots:[],
+          rl:[],
+          pkgs:[],
+          video_url:tp.video_url||null,
+          promoted:tp.promoted||false,
+          email:tp.email,
+        }));
+        setDbTeachers(mapped);
+      }
+    }catch(e){console.error(e);}
+    setTeachersLoaded(true);
+  };
+
+  // Merge: DB teachers first, then hardcoded ones not already in DB
+  const allTeachers=teachersLoaded
+    ?[...dbTeachers,...TEACHERS.filter(t=>!dbTeachers.find(d=>d.name===t.name))]
+    :TEACHERS;
+
+  const filtered=allTeachers.filter(tv=>{
+    const ms=(tv.name+(tv.skill||"")).toLowerCase().includes(search.toLowerCase());
     const mf=filter==="all"||(filter==="online"&&tv.online)||(filter==="offline"&&tv.offline);
     const mc=catF==="all"||tv.cat===catF;
     return ms&&mf&&mc;
@@ -1622,7 +1671,7 @@ export default function App(){
       <div style={{background:C.bg2,padding:"56px 24px",borderTop:`2px solid ${C.border}`}}>
         <div style={{maxWidth:1100,margin:"0 auto"}}>
           {/* Promoted / Featured teachers */}
-          {TEACHERS.filter(tv=>tv.promoted).length>0&&<>
+          {allTeachers.filter(tv=>tv.promoted).length>0&&<>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",marginBottom:18}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
@@ -1633,7 +1682,7 @@ export default function App(){
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:16,marginBottom:40}}>
-              {TEACHERS.filter(tv=>tv.promoted).map(tv=><TCard key={tv.id} tv={tv}/>)}
+              {allTeachers.filter(tv=>tv.promoted).map(tv=><TCard key={tv.id} tv={tv}/>)}
             </div>
             <div style={{height:2,background:C.border,marginBottom:36}}/>
           </>}
@@ -1643,7 +1692,7 @@ export default function App(){
             <button onClick={()=>go("browse")} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:14,cursor:"pointer",fontWeight:900}}>{lang==="ka"?"მეტის ნახვა →":"See more →"}</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:16}}>
-            {TEACHERS.filter(tv=>!tv.promoted).slice(0,4).map(tv=><TCard key={tv.id} tv={tv}/>)}
+            {allTeachers.filter(tv=>!tv.promoted).slice(0,4).map(tv=><TCard key={tv.id} tv={tv}/>)}
           </div>
         </div>
       </div>
