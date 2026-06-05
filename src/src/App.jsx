@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-const googleProvider = new GoogleAuthProvider();
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { createClient } from "@supabase/supabase-js";
 
 const firebaseApp = initializeApp({
@@ -13,10 +12,25 @@ const firebaseApp = initializeApp({
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 });
 const fbAuth = getAuth(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
+
+// Send email via Resend (through a simple Vercel edge function we'll add)
+// For now logs to console — wire up Resend later
+const sendEmail = async ({ to, subject, html }) => {
+  try {
+    await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, subject, html }),
+    });
+  } catch (e) {
+    console.log("Email (not sent yet — Resend not wired):", { to, subject });
+  }
+};
 
 const C = {
   bg:"#FFFFFF", bg2:"#F0F8FF", card:"#FFFFFF",
@@ -99,7 +113,7 @@ const T = {
     search_ph:"რისი სწავლა გინდა?",
     fa:"ყველა",fo:"ონლაინ",ff:"ოფლაინ",
     st:"გადამოწმებული მასწავლებელი",ss:"მოსწავლე",sk:"დარგი",sr:"საშ. რეიტინგი",
-    sc:"რისი სწავლა გინდა?",sf:"რჩეული მასწავლებლები",sf2:"პირადად გადამოწმებული",
+    sc:"რის სწავლა გინდა?",sf:"რჩეული მასწავლებლები",sf2:"პირადად გადამოწმებული",
     sg:"ჯგუფური გაკვეთილები",sg2:"",
     ht:"როგორ მუშაობს",
     h1t:"იპოვე მასწავლებელი",h1d:"მოძებნე უნარით ან კატეგორიით.",
@@ -354,58 +368,63 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
   const t=T[lang];const isKa=lang==="ka";
   const [mode,setMode]=useState(initMode||"login");
   const [name,setName]=useState("");const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [pw2,setPw2]=useState("");
-  const [role,setRole]=useState("student");const [loading,setLoading]=useState(false);const [err,setErr]=useState("");
+  const [role,setRole]=useState("student");const [loading,setLoading]=useState(false);const [gLoading,setGLoading]=useState(false);const [err,setErr]=useState("");
 
-  const signInWithGoogle=async()=>{
-    setLoading(true);setErr("");
+  const getErr=(code)=>{
+    const m={
+      "auth/invalid-credential":isKa?"არასწორი ელ-ფოსტა ან პაროლი":"Wrong email or password",
+      "auth/user-not-found":isKa?"ეს ელ-ფოსტა რეგისტრირებული არ არის":"No account with this email",
+      "auth/wrong-password":isKa?"პაროლი არასწორია":"Incorrect password",
+      "auth/email-already-in-use":isKa?"ეს ელ-ფოსტა უკვე გამოყენებულია":"Email already registered",
+      "auth/weak-password":isKa?"პაროლი მინიმუმ 6 სიმბოლო":"Password must be at least 6 characters",
+      "auth/too-many-requests":isKa?"ზედმეტი მცდელობა. ცოტა ხანი მოიცადე.":"Too many attempts. Please wait.",
+      "auth/network-request-failed":isKa?"ქსელის შეცდომა":"Network error",
+      "auth/unauthorized-domain":isKa?"დომეინი არ არის დამტკიცებული":"Domain not authorized in Firebase",
+    };
+    return m[code]||(isKa?`შეცდომა: ${code}`:`Error: ${code}`);
+  };
+
+  const signInGoogle=async()=>{
+    setGLoading(true);setErr("");
     try{
       const result=await signInWithPopup(fbAuth,googleProvider);
-      const uid=result.user.uid;
-      const displayName=result.user.displayName||result.user.email||"User";
-      const userEmail=result.user.email||null;
-      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:displayName,email:userEmail,role:"student"},{onConflict:"firebase_uid"}).select().single();
-      if(error)throw error;
-      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
-    }catch(err){console.error(err);setErr(isKa?"Google-ით შესვლა ვერ მოხერხდა. სცადეთ ისევ.":"Google sign-in failed. Please try again.");}
-    setLoading(false);
+      const u=result.user;
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:u.uid,phone:u.uid,name:u.displayName||u.email.split("@")[0],email:u.email,role:"student"},{onConflict:"firebase_uid"}).select().single();
+      if(error) console.error("Supabase:",error);
+      onAuth({name:u.displayName||u.email.split("@")[0],email:u.email,uid:u.uid,role:data?.role||"student",id:data?.id});
+    }catch(e){
+      if(e.code!=="auth/popup-closed-by-user"&&e.code!=="auth/cancelled-popup-request") setErr(getErr(e.code));
+    }
+    setGLoading(false);
   };
 
   const handleSubmit=async()=>{
     setErr("");
-    if(!email||!pw){setErr(isKa?"შეავსეთ ყველა ველი":"Please fill in all fields");return;}
-    if(mode==="signup"&&!name){setErr(isKa?"შეიყვანეთ სახელი":"Please enter your name");return;}
+    if(!email||!pw){setErr(isKa?"შეავსე ყველა ველი":"Please fill in all fields");return;}
+    if(mode==="signup"&&!name){setErr(isKa?"შეიყვანე სახელი":"Please enter your name");return;}
     if(mode==="signup"&&pw!==pw2){setErr(isKa?"პაროლები არ ემთხვევა":"Passwords do not match");return;}
     if(mode==="signup"&&pw.length<6){setErr(isKa?"პაროლი მინიმუმ 6 სიმბოლო":"Password must be at least 6 characters");return;}
     setLoading(true);
     try{
       const{createUserWithEmailAndPassword,signInWithEmailAndPassword,updateProfile}=await import("firebase/auth");
-      let firebaseUser;
+      let fu;
       if(mode==="signup"){
-        const cred=await createUserWithEmailAndPassword(fbAuth,email,pw);
-        firebaseUser=cred.user;
-        await updateProfile(firebaseUser,{displayName:name});
+        const c=await createUserWithEmailAndPassword(fbAuth,email,pw);
+        fu=c.user;await updateProfile(fu,{displayName:name});
       }else{
-        const cred=await signInWithEmailAndPassword(fbAuth,email,pw);
-        firebaseUser=cred.user;
+        const c=await signInWithEmailAndPassword(fbAuth,email,pw);
+        fu=c.user;
       }
-      const uid=firebaseUser.uid;
-      const{data,error}=await supabase.from("users").upsert({firebase_uid:uid,phone:uid,name:mode==="signup"?name:(firebaseUser.displayName||email.split("@")[0]),email,role:mode==="signup"?role:"student"},{onConflict:"firebase_uid"}).select().single();
-      if(error)throw error;
-      onAuth({name:data.name,email:data.email,phone:data.phone,role:data.role,id:data.id});
+      const displayName=mode==="signup"?name:(fu.displayName||email.split("@")[0]);
+      const{data,error}=await supabase.from("users").upsert({firebase_uid:fu.uid,phone:fu.uid,name:displayName,email,role:mode==="signup"?role:"student"},{onConflict:"firebase_uid"}).select().single();
+      if(error) console.error("Supabase:",error);
+      onAuth({name:displayName,email,uid:fu.uid,role:data?.role||role,id:data?.id});
     }catch(e){
-      console.error(e);
-      if(e.code==="auth/user-not-found"||e.code==="auth/wrong-password"||e.code==="auth/invalid-credential"){setErr(isKa?"არასწორი ელ-ფოსტა ან პაროლი":"Wrong email or password");}
-      else if(e.code==="auth/email-already-in-use"){setErr(isKa?"ეს ელ-ფოსტა უკვე გამოყენებულია":"This email is already registered");}
-      else{setErr(isKa?"შეცდომა. სცადეთ ისევ.":"Something went wrong. Please try again.");}
+      console.error(e.code,e.message);
+      setErr(getErr(e.code));
     }
     setLoading(false);
   };
-
-  const GBtn=({children,onClick,disabled})=>(
-    <button onClick={onClick} disabled={disabled} style={{width:"100%",padding:"13px",background:"#fff",border:"2px solid #E0EEF7",borderRadius:"20px",fontSize:14,fontFamily:"'Nunito',sans-serif",fontWeight:900,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:12,color:"#1A1A1A",transition:"all 0.15s",opacity:disabled?0.6:1}} onMouseEnter={e=>{if(!disabled)e.currentTarget.style.borderColor="#1CB0F6";}} onMouseLeave={e=>e.currentTarget.style.borderColor="#E0EEF7"}>
-      {children}
-    </button>
-  );
 
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9996,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(8px)"}}>
@@ -414,14 +433,19 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
           <Logo onClick={()=>{}}/>
           <button onClick={onClose} style={{background:C.bg2,border:"none",borderRadius:C.radiusSm,width:34,height:34,fontSize:18,cursor:"pointer",color:C.muted,fontWeight:700}}>×</button>
         </div>
-        <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{mode==="login"?(isKa?"კეთილი იყოს თქვენი დაბრუნება!":"Welcome back!"):(isKa?"ანგარიშის შექმნა":"Create account")}</div>
+        <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{mode==="login"?t.lt:t.st2}</div>
         <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,marginBottom:20}}>
           {mode==="login"?<>{isKa?"არ გაქვს ანგარიში? ":"No account? "}<span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>{setMode("signup");setErr("");}}>{isKa?"შექმნა":"Sign up"}</span></>:<>{isKa?"უკვე გაქვს? ":"Have an account? "}<span style={{color:C.primary,cursor:"pointer",fontWeight:900,textDecoration:"underline"}} onClick={()=>{setMode("login");setErr("");}}>{isKa?"შესვლა":"Log in"}</span></>}
         </div>
-        <GBtn onClick={signInWithGoogle} disabled={loading}>
-          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.09-6.09C34.46 3.05 29.5 1 24 1 14.82 1 7.07 6.48 3.58 14.18l7.09 5.51C12.3 13.56 17.67 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.96-2.2 5.47-4.68 7.15l7.19 5.59C43.18 37.27 46.5 31.32 46.5 24.5z"/><path fill="#FBBC05" d="M10.67 28.31A14.6 14.6 0 0 1 9.5 24c0-1.5.26-2.95.71-4.31l-7.09-5.51A23.93 23.93 0 0 0 0 24c0 3.87.92 7.53 2.54 10.77l8.13-6.46z"/><path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.94l-7.19-5.59C28.5 37.96 26.35 38.5 24 38.5c-6.33 0-11.7-4.06-13.33-9.69l-8.13 6.46C6.07 42.52 14.46 47 24 47z"/></svg>
-          {isKa?"Google-ით შესვლა":"Continue with Google"}
-        </GBtn>
+        {/* Google button */}
+        <button onClick={signInGoogle} disabled={gLoading}
+          style={{width:"100%",padding:"13px",background:"#fff",border:`2px solid ${C.border}`,borderRadius:C.radiusLg,fontSize:14,fontFamily:C.fb,fontWeight:800,cursor:gLoading?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,marginBottom:16,color:C.text,transition:"all 0.15s",opacity:gLoading?0.6:1}}
+          onMouseEnter={e=>{if(!gLoading)e.currentTarget.style.borderColor=C.primary;}} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+          {gLoading?"...":<>
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.14 0 5.95 1.08 8.17 2.85l6.09-6.09C34.46 3.05 29.5 1 24 1 14.82 1 7.07 6.48 3.58 14.18l7.09 5.51C12.3 13.56 17.67 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.64-.15-3.22-.42-4.75H24v9h12.7c-.55 2.96-2.2 5.47-4.68 7.15l7.19 5.59C43.18 37.27 46.5 31.32 46.5 24.5z"/><path fill="#FBBC05" d="M10.67 28.31A14.6 14.6 0 0 1 9.5 24c0-1.5.26-2.95.71-4.31l-7.09-5.51A23.93 23.93 0 0 0 0 24c0 3.87.92 7.53 2.54 10.77l8.13-6.46z"/><path fill="#34A853" d="M24 47c5.5 0 10.12-1.82 13.5-4.94l-7.19-5.59C28.5 37.96 26.35 38.5 24 38.5c-6.33 0-11.7-4.06-13.33-9.69l-8.13 6.46C6.07 42.52 14.46 47 24 47z"/></svg>
+            {isKa?"Google-ით შესვლა":"Continue with Google"}
+          </>}
+        </button>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><div style={{flex:1,height:1,background:C.border}}/><span style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700}}>{isKa?"ან ელ-ფოსტით":"or with email"}</span><div style={{flex:1,height:1,background:C.border}}/></div>
         {mode==="signup"&&<>
           <Inp label={isKa?"სახელი და გვარი":"Full name"} value={name} onChange={e=>setName(e.target.value)}/>
@@ -434,35 +458,73 @@ const AuthModal=({mode:initMode,lang,onAuth,onClose})=>{
             </div>
           </div>
         </>}
-        <Inp label={isKa?"ელ-ფოსტა":"Email"} type="email" value={email} onChange={e=>setEmail(e.target.value)}/>
-        <Inp label={isKa?"პაროლი":"Password"} type="password" value={pw} onChange={e=>setPw(e.target.value)}/>
+        <Inp label={isKa?"ელ-ფოსტა":"Email"} type="email" value={email} onChange={e=>{setEmail(e.target.value);setErr("");}}/>
+        <Inp label={isKa?"პაროლი":"Password"} type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr("");}}/>
         {mode==="signup"&&<Inp label={isKa?"პაროლის დადასტურება":"Confirm password"} type="password" value={pw2} onChange={e=>setPw2(e.target.value)}/>}
         {mode==="signup"&&<div style={{background:C.bg2,borderRadius:C.radius,padding:"12px 16px",marginBottom:16,fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:600,lineHeight:1.6,border:`2px solid ${C.border}`}}>
           <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer"}}>
             <input type="checkbox" style={{marginTop:2,flexShrink:0,width:16,height:16,accentColor:C.primary}}/>
-            <span>{isKa?"ვადასტურებ, რომ 18 წელს გადავაჭარბე. ვეთანხმები ":"I confirm I am 18+ and agree to the "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"მომსახურების პირობებს":"Terms of Service"}</span>{" & "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"კონფიდენციალურობის პოლიტიკას":"Privacy Policy"}</span>.</span>
+            <span>{isKa?"ვადასტურებ, 18+ ვარ და ვეთანხმები ":"I confirm I am 18+ and agree to the "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"მომსახურების პირობებს":"Terms of Service"}</span>{" & "}<span style={{color:C.primary,fontWeight:800}}>{isKa?"კონფიდენციალურობის პოლიტიკას":"Privacy Policy"}</span>.</span>
           </label>
         </div>}
-        {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"10px 14px",marginBottom:12,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>{err}</div>}
+        {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"10px 14px",marginBottom:12,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>⚠️ {err}</div>}
         <PBtn onClick={handleSubmit} full loading={loading} size="lg">{mode==="login"?(isKa?"შესვლა":"Log in"):(isKa?"ანგარიშის შექმნა":"Create account")}</PBtn>
-        <div style={{marginTop:20,padding:"14px 16px",background:C.bg2,borderRadius:C.radius,border:`2px solid ${C.border}`}}>
-          <div style={{fontSize:12,fontWeight:900,color:C.muted,fontFamily:C.fb,marginBottom:4}}>{isKa?"📱 ტელეფონით შესვლა":"📱 Sign in with phone"}</div>
-          <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,lineHeight:1.6}}>{isKa?"თუ გსურს ტელეფონის ნომრით შესვლა, გამოგვიგზავნე შეტყობინება: ":"Want to sign in with your phone number? Contact us: "}<a href="mailto:hello@nateba.ge" style={{color:C.primary,fontWeight:800}}>hello@nateba.ge</a></div>
-        </div>
       </div>
     </div>
   );
 };
 
-
-const PayModal=({item,slot,lang,onSuccess,onClose})=>{
-  const t=T[lang];const [card,setCard]=useState("");const [exp,setExp]=useState("");const [cvv,setCvv]=useState("");
+const PayModal=({item,slot,lang,user,onSuccess,onClose})=>{
+  const t=T[lang];const isKa=lang==="ka";
+  const [card,setCard]=useState("");const [exp,setExp]=useState("");const [cvv,setCvv]=useState("");
   const [isGift,setIsGift]=useState(false);const [gN,setGN]=useState("");const [gE,setGE]=useState("");const [gM,setGM]=useState("");
   const [loading,setLoading]=useState(false);const [done,setDone]=useState(false);
-  const price=item.pkgPrice||item.trial||item.price;const fee=Math.round(price*0.1);
+  const price=item.pkgPrice||item.trial||item.price;
   const fmt=v=>v.replace(/\D/g,"").slice(0,16).replace(/(.{4})/g,"$1 ").trim();
   const fmtE=v=>{const d=v.replace(/\D/g,"").slice(0,4);return d.length>2?d.slice(0,2)+" / "+d.slice(2):d;};
-  const pay=()=>{if(card.length<19||!exp||!cvv)return;setLoading(true);setTimeout(()=>{setLoading(false);setDone(true);setTimeout(onSuccess,1600);},2000);};
+
+  const pay=async()=>{
+    if(card.length<19||!exp||!cvv)return;
+    setLoading(true);
+    try{
+      const uid=user?.uid||user?.phone||"anon";
+      const roomName=`nateba-${(item.name||item.teacher||"session").replace(/\s+/g,"-").toLowerCase()}-${Date.now()}`;
+      // Save booking to Supabase
+      const{error}=await supabase.from("bookings").insert({
+        student_firebase_uid: uid,
+        student_email: user?.email||null,
+        student_name: user?.name||null,
+        teacher_name: item.name||item.teacher||null,
+        teacher_email: item.email||null,
+        teacher_firebase_uid: item.firebase_uid||item.teacher_uid||null,
+        skill: item.skill||item.title||null,
+        slot: slot||null,
+        price: price,
+        is_trial: !!item.trial&&price===item.trial,
+        status: "confirmed",
+        video_room: roomName,
+      });
+      if(error) console.error("Booking save error:",error);
+      // Email to student
+      await sendEmail({
+        to: user?.email||"",
+        subject: isKa?`დაჯავშნილია — ${item.name||item.teacher}`:`Booking confirmed — ${item.name||item.teacher}`,
+        html:`<h2>${isKa?"შენი ჯავშანი დადასტურდა!":"Your booking is confirmed!"}</h2><p><b>${isKa?"მასწავლებელი":"Teacher"}:</b> ${item.name||item.teacher}</p><p><b>${isKa?"კურსი":"Skill"}:</b> ${item.skill||item.title}</p><p><b>${isKa?"დრო":"Time"}:</b> ${slot}</p><p><b>${isKa?"ფასი":"Price"}:</b> ₾${price}</p><p><b>Video room:</b> https://meet.jit.si/${roomName}</p>`
+      });
+      // Email to admin
+      await sendEmail({
+        to:"hello@nateba.ge",
+        subject:`New booking: ${user?.name} → ${item.name||item.teacher}`,
+        html:`<p>Student: ${user?.name} (${user?.email})</p><p>Teacher: ${item.name||item.teacher}</p><p>Skill: ${item.skill||item.title}</p><p>Slot: ${slot}</p><p>Price: ₾${price}</p>`
+      });
+      setDone(true);
+      setTimeout(onSuccess,1600);
+    }catch(e){
+      console.error(e);
+    }
+    setLoading(false);
+  };
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9997,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(8px)"}}>
       <div style={{background:C.card,borderRadius:C.radiusLg,padding:28,width:"100%",maxWidth:440,boxShadow:C.shadowLg,border:`2px solid ${C.border}`,maxHeight:"92vh",overflowY:"auto"}}>
@@ -472,7 +534,7 @@ const PayModal=({item,slot,lang,onSuccess,onClose})=>{
         </div>
         {!done?<>
           <div style={{background:C.primaryLight,borderRadius:C.radius,padding:16,marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
-            <Av initials={item.av} bg={CAT_COLORS[item.cat]||C.primary} size={48}/>
+            <Av initials={item.av||(item.name||item.teacher||"T").slice(0,2).toUpperCase()} bg={CAT_COLORS[item.cat]||C.primary} size={48}/>
             <div style={{flex:1}}><div style={{fontSize:14,fontWeight:800,color:C.text,fontFamily:C.fb}}>{t.pyw} {item.name||item.teacher}</div><div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{slot||item.skill}</div></div>
             <div style={{fontSize:26,fontWeight:900,color:C.accent,fontFamily:C.fb}}>₾{price}</div>
           </div>
@@ -499,7 +561,7 @@ const PayModal=({item,slot,lang,onSuccess,onClose})=>{
           <div style={{textAlign:"center",padding:"32px 0"}}>
             <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={90}/></div>
             <div style={{fontSize:24,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{t.pyok}</div>
-            <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{lang==="ka"?"შენი გზა დაიწყო!":"Your journey begins!"}</div>
+            <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{isKa?"შენი გზა დაიწყო!":"Your journey begins!"}</div>
           </div>
         )}
       </div>
@@ -537,10 +599,59 @@ const MsgModal=({teacher,lang,onClose})=>{
   );
 };
 
-const TeachPage=({lang,onBack})=>{
-  const t=T[lang];const [f,setF]=useState({name:"",cat:"school",skill:"",price:"",bio:"",video:"",online:true,offline:false});const [done,setDone]=useState(false);
-  const cat=CATEGORIES.find(c=>c.id===f.cat)||CATEGORIES[0];
-  if(done)return(<div style={{minHeight:"60vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Hedgehog size={100}/></div><div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:8}}>{t.tok}</div><div style={{marginTop:20}}><PBtn onClick={onBack} size="lg">{t.back}</PBtn></div></div>);
+const TeachPage=({lang,onBack,user})=>{
+  const t=T[lang];
+  const isKa=lang==="ka";
+  const [f,setF]=useState({name:user?.name||"",cat:"school",skill:"",price:"",bio:"",video:"",online:true,offline:false});
+  const [done,setDone]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [err,setErr]=useState("");
+
+  const submit=async()=>{
+    if(!f.name||!f.skill||!f.price||!f.bio){
+      setErr(isKa?"შეავსე ყველა სავალდებულო ველი":"Please fill in all required fields");
+      return;
+    }
+    setLoading(true);setErr("");
+    try{
+      const{data,error}=await supabase.from("teacher_applications").insert({
+        firebase_uid: user?.uid||user?.phone||null,
+        name: f.name,
+        email: user?.email||null,
+        category: f.cat,
+        skill: f.skill,
+        price: parseInt(f.price),
+        bio: f.bio,
+        video_url: f.video||null,
+        online: f.online,
+        offline: f.offline,
+        status: "pending",
+      });
+      if(error) throw error;
+      // Email notification to admin
+      await sendEmail({
+        to:"hello@nateba.ge",
+        subject:`New teacher application: ${f.name} — ${f.skill}`,
+        html:`<h2>New application received</h2><p><b>Name:</b> ${f.name}</p><p><b>Skill:</b> ${f.skill}</p><p><b>Category:</b> ${f.cat}</p><p><b>Price:</b> ₾${f.price}</p><p><b>Bio:</b> ${f.bio}</p><p><b>Email:</b> ${user?.email||"not provided"}</p><p>Review in Supabase → teacher_applications table.</p>`
+      });
+      setDone(true);
+    }catch(e){
+      console.error(e);
+      setErr(isKa?"შეცდომა. სცადე ხელახლა.":"Error submitting. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  if(done)return(
+    <div style={{minHeight:"60vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Hedgehog size={100}/></div>
+      <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:8}}>{t.tok}</div>
+      <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24,lineHeight:1.6,maxWidth:360}}>
+        {isKa?"შენი განაცხადი მიღებულია. 24 საათში გამოგიგზავნით პასუხს ელ-ფოსტაზე.":"Your application is received. We'll email you within 24 hours."}
+      </div>
+      <PBtn onClick={onBack} size="lg">{t.back}</PBtn>
+    </div>
+  );
   return(
     <div style={{maxWidth:640,margin:"0 auto",padding:"40px 24px"}}>
       <button onClick={onBack} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:13,cursor:"pointer",marginBottom:24,padding:0,fontWeight:900}}>← {t.back}</button>
@@ -562,12 +673,11 @@ const TeachPage=({lang,onBack})=>{
         </select>
       </div>
       <div style={{marginBottom:16}}>
-        <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{t.tsk}</label>
-        <input value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder={lang==="ka"?"მაგ: ფიანდო, ინგლისური, ფოტოგრაფია...":"e.g. Piano, English, Photography..."} style={{width:"100%",padding:"13px 16px",background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none",boxSizing:"border-box"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
-        <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:4}}>{t.tsh}</div>
+        <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{t.tsk} *</label>
+        <input value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder={isKa?"მაგ: პიანო, ინგლისური, ფოტოგრაფია...":"e.g. Piano, English, Photography..."} style={{width:"100%",padding:"13px 16px",background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none",boxSizing:"border-box"}} onFocus={e=>e.target.style.borderColor=C.primary} onBlur={e=>e.target.style.borderColor=C.border}/>
       </div>
-      <Inp label={t.tp} type="number" value={f.price} onChange={e=>setF(p=>({...p,price:e.target.value}))} placeholder="40"/>
-      <Inp label={t.tb} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={4}/>
+      <Inp label={`${t.tp} *`} type="number" value={f.price} onChange={e=>setF(p=>({...p,price:e.target.value}))} placeholder="40"/>
+      <Inp label={`${t.tb} *`} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={4} placeholder={isKa?"მოგვიყევი შენს გამოცდილებასა და სტილზე...":"Tell us about your experience and teaching style..."}/>
       <Inp label={t.tv2} value={f.video} onChange={e=>setF(p=>({...p,video:e.target.value}))} placeholder="https://youtube.com/..."/>
       <div style={{display:"flex",gap:20,marginBottom:28}}>
         {[["online",t.ton],["offline",t.tof]].map(([k,l])=>(
@@ -576,24 +686,82 @@ const TeachPage=({lang,onBack})=>{
           </label>
         ))}
       </div>
-      <PBtn onClick={()=>setDone(true)} full size="lg">{t.tsub}</PBtn>
+      {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>⚠️ {err}</div>}
+      {!user&&<div style={{background:C.accentLight,border:`2px solid ${C.accent}44`,borderRadius:C.radius,padding:"12px 16px",marginBottom:16,fontSize:13,color:C.accent,fontFamily:C.fb,fontWeight:700}}>
+        {isKa?"⚠️ განაცხადის გასაგზავნად გთხოვთ შეხვიდეთ ანგარიშში.":"⚠️ Please log in to submit your application."}
+      </div>}
+      <PBtn onClick={user?submit:undefined} full loading={loading} disabled={!user} size="lg">{t.tsub}</PBtn>
     </div>
   );
 };
 
-const Dashboard=({user,lang,onJoinVideo,onMsg})=>{
-  const t=T[lang];const isTutor=user.role==="tutor";const [tab,setTab]=useState("upcoming");const [showStu,setShowStu]=useState(null);
-  const lessons=[{teacher:TEACHERS[0],slot:"Today 14:00"},{teacher:TEACHERS[2],slot:"Tomorrow 11:00"}];
-  const pending=[{teacher:TEACHERS[3],stu:{name:"Giorgi M.",r:4.8,s:12},slot:"Fri 19:00"}];
+const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach})=>{
+  const t=T[lang];
+  const isKa=lang==="ka";
+  const isTutor=user.role==="tutor";
+  const [tab,setTab]=useState("upcoming");
+  const [showStu,setShowStu]=useState(null);
+  const [bookings,setBookings]=useState([]);
+  const [loadingB,setLoadingB]=useState(true);
+  const [appStatus,setAppStatus]=useState(null); // 'pending'|'approved'|'rejected'|null
+
+  useEffect(()=>{
+    loadBookings();
+    checkApplication();
+  },[user]);
+
+  const loadBookings=async()=>{
+    setLoadingB(true);
+    try{
+      const uid=user.uid||user.phone;
+      const{data,error}=await supabase
+        .from("bookings")
+        .select("*")
+        .eq(isTutor?"teacher_firebase_uid":"student_firebase_uid", uid)
+        .order("created_at",{ascending:false});
+      if(!error&&data) setBookings(data);
+    }catch(e){console.error(e);}
+    setLoadingB(false);
+  };
+
+  const checkApplication=async()=>{
+    try{
+      const uid=user.uid||user.phone;
+      const{data}=await supabase
+        .from("teacher_applications")
+        .select("status")
+        .eq("firebase_uid",uid)
+        .order("created_at",{ascending:false})
+        .limit(1)
+        .single();
+      if(data) setAppStatus(data.status);
+    }catch(e){}
+  };
+
+  const upcoming=bookings.filter(b=>b.status==="confirmed");
+  const history=bookings.filter(b=>b.status==="completed");
+
   return(
     <div style={{maxWidth:860,margin:"0 auto",padding:"40px 24px"}}>
       <div style={{marginBottom:32}}>
         <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:4}}>{t.dh}</div>
         <div style={{fontSize:32,fontWeight:900,color:C.text,fontFamily:C.fb}}>{user.name} 👋</div>
       </div>
+
+      {/* Application status banner */}
+      {appStatus==="pending"&&!isTutor&&(
+        <div style={{background:"#FFF8E0",border:`2px solid ${C.accent}44`,borderRadius:C.radiusLg,padding:"16px 20px",marginBottom:24,display:"flex",gap:12,alignItems:"center"}}>
+          <div style={{fontSize:24}}>⏳</div>
+          <div>
+            <div style={{fontSize:14,fontWeight:900,color:C.accent,fontFamily:C.fb}}>{isKa?"შენი განაცხადი განიხილება":"Your teacher application is under review"}</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:3}}>{isKa?"24 საათში გამოგიგზავნით პასუხს.":"We'll get back to you within 24 hours."}</div>
+          </div>
+        </div>
+      )}
+
       {isTutor&&<>
         <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:28}}>
-          {[[t.de,"₾2,340","#1CB0F6"],[t.dstu,"18","#58CC02"],[t.dse,"47","#A259FF"]].map(([l,v,clr])=>(
+          {[[t.de,`₾${bookings.reduce((a,b)=>a+(b.price||0),0)}`,"#1CB0F6"],[t.dstu,`${new Set(bookings.map(b=>b.student_firebase_uid)).size}`,"#58CC02"],[t.dse,`${bookings.length}`,"#A259FF"]].map(([l,v,clr])=>(
             <div key={l} style={{background:clr+"12",border:`2px solid ${clr}33`,borderRadius:C.radiusLg,padding:"20px 18px"}}>
               <div style={{fontSize:11,color:clr,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8}}>{l}</div>
               <div style={{fontSize:28,fontWeight:900,color:clr,fontFamily:C.fb}}>{v}</div>
@@ -602,60 +770,69 @@ const Dashboard=({user,lang,onJoinVideo,onMsg})=>{
         </div>
         <div style={{marginBottom:20}}>
           <button onClick={()=>setShowPromote(true)} style={{background:"linear-gradient(135deg,#E9A520,#FF7A00)",border:"none",borderRadius:C.radiusLg,padding:"13px 24px",fontSize:14,fontWeight:900,color:"#fff",cursor:"pointer",fontFamily:C.fb,boxShadow:"0 4px 0 #CC7700",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s"}} onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 0 #CC7700";}} onMouseLeave={e=>{e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="0 4px 0 #CC7700";}}>
-            ✦ Promote my profile
+            ✦ {isKa?"პროფილის პრომოცია":"Promote my profile"}
           </button>
         </div>
-        {pending.length>0&&<div style={{background:C.accentLight,border:`2px solid ${C.accent}44`,borderRadius:C.radiusLg,padding:"18px 20px",marginBottom:24}}>
-          <div style={{fontSize:12,fontWeight:900,color:C.accent,fontFamily:C.fb,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:12}}>{t.pent}</div>
-          {pending.map((p,i)=>(
-            <div key={i} style={{background:C.white,borderRadius:C.radius,padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{p.stu.name}</div>
-                <div style={{display:"flex",gap:8,alignItems:"center",marginTop:3}}><Stars r={p.stu.r} s={12}/><span style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>{p.stu.r} · {p.stu.s} {t.studS}</span></div>
-                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>{p.slot}</div>
-              </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <button onClick={()=>setShowStu(p.stu)} style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radiusSm,padding:"7px 13px",fontSize:12,fontWeight:700,color:C.primary,cursor:"pointer",fontFamily:C.fb}}>{t.dsp}</button>
-                <button style={{background:C.redLight,border:"none",borderRadius:C.radiusSm,padding:"7px 13px",fontSize:12,fontWeight:700,color:C.red,cursor:"pointer",fontFamily:C.fb}}>{t.dd}</button>
-                <PBtn size="sm">{t.da}</PBtn>
-              </div>
-            </div>
-          ))}
-        </div>}
       </>}
+
+      {/* Not a tutor — suggest applying */}
+      {!isTutor&&!appStatus&&(
+        <div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radiusLg,padding:"18px 20px",marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:900,color:C.primary,fontFamily:C.fb}}>{isKa?"გახდი მასწავლებელი Nateba-ზე":"Become a teacher on Nateba"}</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:3}}>{isKa?"გაუზიარე შენი ცოდნა და გამოიმუშავე.":"Share your knowledge and earn."}</div>
+          </div>
+          <PBtn onClick={onGoTeach} size="sm">{isKa?"განაცხადი":"Apply"}</PBtn>
+        </div>
+      )}
+
       <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
-        {(isTutor?[["upcoming",t.du],["inbox",t.dm]]:[["upcoming",t.du],["inbox",t.dm],["saved",lang==="ka"?"შენახული ♥":"Saved ♥"],["history",lang==="ka"?"ისტორია":"History"]]).map(([k,l])=>(
+        {(isTutor
+          ?[["upcoming",t.du],["inbox",t.dm],["history",isKa?"ისტორია":"History"]]
+          :[["upcoming",t.du],["inbox",t.dm],["saved",isKa?"შენახული ♥":"Saved ♥"],["history",isKa?"ისტორია":"History"]]
+        ).map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"12px 20px",border:"none",background:"none",fontSize:14,fontWeight:900,fontFamily:C.fb,color:tab===k?C.accent:C.muted,borderBottom:`3px solid ${tab===k?C.accent:"transparent"}`,marginBottom:-2,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{l}</button>
         ))}
       </div>
+
       {tab==="upcoming"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {lessons.map((l,i)=>(
-          <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:14}}>
+        {loadingB&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
+        {!loadingB&&upcoming.map((b,i)=>(
+          <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:14,flexWrap:"wrap"}}>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
-              <Av initials={l.teacher.av} bg={CAT_COLORS[l.teacher.cat]||C.primary} size={46}/>
-              <div><div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{l.teacher.name}</div><div style={{fontSize:12,color:CAT_COLORS[l.teacher.cat]||C.primary,fontFamily:C.fb,fontWeight:800}}>{l.teacher.skill}</div><div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>{l.slot}</div></div>
+              <div style={{width:46,height:46,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:15,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>
+                {(b.teacher_name||"T").slice(0,2).toUpperCase()}
+              </div>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.teacher_name||b.student_name}</div>
+                <div style={{fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:800}}>{b.skill}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.slot}</div>
+              </div>
             </div>
-            <PBtn onClick={()=>onJoinVideo(l.teacher,l.slot)} size="sm">{t.dj}</PBtn>
+            <PBtn onClick={()=>onJoinVideo({name:b.teacher_name,skill:b.skill,cat:"tech",av:(b.teacher_name||"T").slice(0,2).toUpperCase()},b.slot)} size="sm">{t.dj}</PBtn>
           </div>
         ))}
-        {lessons.length===0&&<div style={{textAlign:"center",padding:"32px 24px"}}><div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={80}/></div><div style={{color:C.muted,fontFamily:C.fb,fontSize:15,fontWeight:600}}>{t.dem}</div></div>}
+        {!loadingB&&upcoming.length===0&&(
+          <div style={{textAlign:"center",padding:"32px 24px"}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={80}/></div>
+            <div style={{color:C.muted,fontFamily:C.fb,fontSize:15,fontWeight:600}}>{t.dem}</div>
+            <div style={{marginTop:16}}><PBtn size="sm">{isKa?"მასწავლებლის პოვნა":"Find a teacher"}</PBtn></div>
+          </div>
+        )}
       </div>}
+
       {tab==="inbox"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {TEACHERS.slice(0,3).map((teacher,i)=>(
-          <div key={i} onClick={()=>onMsg(teacher)} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,cursor:"pointer",transition:"border 0.15s"}} onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
-            <Av initials={teacher.av} bg={CAT_COLORS[teacher.cat]||C.primary} size={42}/>
-            <div style={{flex:1}}><div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{teacher.name}</div><div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>Hi! Happy to answer any questions.</div></div>
-            {i===0&&<div style={{width:10,height:10,borderRadius:"50%",background:C.accent,flexShrink:0}}/>}
-          </div>
-        ))}
+        <div style={{textAlign:"center",padding:"32px 24px",color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>
+          {isKa?"შეტყობინებები მალე გამოჩნდება.":"Messages coming soon. For now, email teachers directly after booking."}
+        </div>
       </div>}
+
       {tab==="saved"&&<div>
         {saved.length===0
           ?<div style={{textAlign:"center",padding:"48px 24px"}}>
             <div style={{fontSize:48,marginBottom:12}}>♡</div>
-            <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>No saved teachers yet</div>
-            <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24,fontWeight:600}}>Tap the heart on any teacher card to save them here.</div>
-            <PBtn onClick={()=>go("browse")}>{lang==="ka"?"მასწავლებლების ძიება":"Browse teachers"}</PBtn>
+            <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{isKa?"შენახული მასწავლებელი არ არის":"No saved teachers yet"}</div>
+            <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24,fontWeight:600}}>{isKa?"გული დააჭირე ბარათზე.":"Tap the heart on any teacher card to save them here."}</div>
           </div>
           :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
             {TEACHERS.filter(tv=>saved.includes(tv.id)).map(tv=>{
@@ -668,30 +845,39 @@ const Dashboard=({user,lang,onJoinVideo,onMsg})=>{
                     <div style={{fontSize:12,color:catColor,fontFamily:C.fb,fontWeight:800}}>{tv.skill}</div>
                     <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>₾{tv.price}/session</div>
                   </div>
-                  <PBtn onClick={()=>openT(tv)} size="sm">View</PBtn>
+                  <PBtn onClick={()=>openT(tv)} size="sm">{isKa?"ნახვა":"View"}</PBtn>
                 </div>
               );
             })}
           </div>
         }
       </div>}
+
       {tab==="history"&&<div>
+        {loadingB&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
+        {!loadingB&&history.length===0&&(
+          <div style={{textAlign:"center",padding:"32px 24px",color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>
+            {isKa?"დასრულებული გაკვეთილი არ არის.":"No completed sessions yet."}
+          </div>
+        )}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {[{teacher:TEACHERS[1],slot:"May 28 · 18:00",rating:5},{teacher:TEACHERS[0],slot:"May 20 · 10:00",rating:5},{teacher:TEACHERS[2],slot:"May 12 · 11:00",rating:4}].map((l,i)=>(
+          {history.map((b,i)=>(
             <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 18px",display:"flex",alignItems:"center",gap:14}}>
-              <Av initials={l.teacher.av} bg={CAT_COLORS[l.teacher.cat]||C.primary} size={44}/>
+              <div style={{width:44,height:44,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>
+                {(b.teacher_name||"T").slice(0,2).toUpperCase()}
+              </div>
               <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{l.teacher.name}</div>
-                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{l.slot}</div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.teacher_name}</div>
+                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.slot} · ₾{b.price}</div>
               </div>
               <div style={{textAlign:"right"}}>
-                <Stars r={l.rating} s={13}/>
-                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>Completed</div>
+                <div style={{fontSize:11,color:C.ok,fontFamily:C.fb,fontWeight:700}}>✓ {isKa?"დასრულდა":"Completed"}</div>
               </div>
             </div>
           ))}
         </div>
       </div>}
+
       {showStu&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9996,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:C.card,borderRadius:C.radiusLg,padding:28,maxWidth:360,width:"100%",boxShadow:C.shadowLg,border:`2px solid ${C.border}`}}>
@@ -706,7 +892,6 @@ const Dashboard=({user,lang,onJoinVideo,onMsg})=>{
     </div>
   );
 };
-
 const LegalPage=({type,lang,onBack})=>{
   const t=T[lang];const isTos=type==="tos";
   return(
@@ -992,13 +1177,13 @@ const NewsletterForm=({lang})=>{
 };
 
 export default function App(){
-  const [lang,setLang]=useState(()=>localStorage.getItem("nateba_lang")||"ka");
+  const [lang,setLang]=useState("en");
   const [page,setPage]=useState("home");
-  const [cookieAccepted,setCookieAccepted]=useState(()=>localStorage.getItem("nateba_cookie"));
+  const [cookieAccepted,setCookieAccepted]=useState(null);
   const [showPromote,setShowPromote]=useState(false);
   const [mobileMenu,setMobileMenu]=useState(false);
-  const acceptCookies=()=>{setCookieAccepted("accepted");localStorage.setItem("nateba_cookie","accepted");};
-  const declineCookies=()=>{setCookieAccepted("declined");localStorage.setItem("nateba_cookie","declined");};
+  const acceptCookies=()=>setCookieAccepted("accepted");
+  const declineCookies=()=>setCookieAccepted("declined");
   const [selT,setSelT]=useState(null);
   const [search,setSearch]=useState("");
   const [filter,setFilter]=useState("all");
@@ -1012,14 +1197,12 @@ export default function App(){
   const [payment,setPayment]=useState(null);
   const [msgT,setMsgT]=useState(null);
   const [toast,setToast]=useState(null);
-  const [saved,setSaved]=useState(()=>{try{return JSON.parse(localStorage.getItem("nateba_saved")||"[]");}catch{return [];}});
-
-  useEffect(()=>{const s=localStorage.getItem("nateba_user");if(s){try{setUser(JSON.parse(s));}catch{}}}, []);
+  const [saved,setSaved]=useState([]);
 
   const t=T[lang];
   const go=p=>{setPage(p);window.scrollTo(0,0);};
   const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);go("teacher");};
-  const toggleSave=id=>setSaved(s=>{const n=s.includes(id)?s.filter(x=>x!==id):[...s,id];localStorage.setItem("nateba_saved",JSON.stringify(n));return n;});
+  const toggleSave=id=>setSaved(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const filtered=TEACHERS.filter(tv=>{
     const ms=(tv.name+tv.skill).toLowerCase().includes(search.toLowerCase());
     const mf=filter==="all"||(filter==="online"&&tv.online)||(filter==="offline"&&tv.offline);
@@ -1041,14 +1224,14 @@ export default function App(){
           {user?<>
             <button onClick={()=>go("dashboard")} style={{border:"none",background:"transparent",color:C.muted,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:700}}>{t.nav_dash}</button>
             <Av initials={user.name.slice(0,2).toUpperCase()} bg={C.primary} size={30}/>
-            <button onClick={()=>{setUser(null);localStorage.removeItem("nateba_user");go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
+            <button onClick={()=>{setUser(null);go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
           </>:<>
             <button onClick={()=>setAuthMode("login")} style={{border:"none",background:"transparent",color:C.mid,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:900}}>{t.nav_login}</button>
             <PBtn onClick={()=>setAuthMode("signup")} size="sm">{t.nav_signup}</PBtn>
           </>}
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2,marginLeft:6}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>{setLang(l);localStorage.setItem("nateba_lang",l);}} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900,transition:"all 0.2s"}}>{l.toUpperCase()}</button>
             ))}
           </div>
         </div>
@@ -1056,7 +1239,7 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:8,position:"relative"}} id="mobile-nav">
           <div style={{display:"flex",background:C.bg2,borderRadius:C.radiusSm,border:`2px solid ${C.border}`,padding:2}}>
             {["en","ka"].map(l=>(
-              <button key={l} onClick={()=>{setLang(l);localStorage.setItem("nateba_lang",l);}} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
+              <button key={l} onClick={()=>setLang(l)} style={{border:"none",borderRadius:6,padding:"4px 9px",fontSize:11,cursor:"pointer",background:lang===l?C.primary:"transparent",color:lang===l?"#fff":C.muted,fontFamily:C.fb,fontWeight:900}}>{l.toUpperCase()}</button>
             ))}
           </div>
           <button onClick={()=>setMobileMenu(m=>!m)} style={{background:mobileMenu?C.primaryLight:"none",border:`2px solid ${mobileMenu?C.primary:C.border}`,borderRadius:C.radiusSm,width:40,height:40,cursor:"pointer",fontSize:20,color:C.primary,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>
@@ -1428,8 +1611,8 @@ export default function App(){
       {page==="browse"&&<BrowsePage/>}
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
-      {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT}/>}
+      {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user}/>}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")}/>}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
@@ -1437,8 +1620,8 @@ export default function App(){
       {!["home","browse","teacher","groups","teach","dashboard","tos","pp","faq","about"].includes(page)&&<NotFoundPage onBack={()=>go("home")}/>}
       {!cookieAccepted&&<CookieBanner onAccept={acceptCookies} onDecline={declineCookies} onLearnMore={()=>go('pp')}/>}
       {showPromote&&<PromoteModal lang={lang} onClose={()=>setShowPromote(false)}/>}
-      {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);localStorage.setItem("nateba_user",JSON.stringify(u));setAuthMode(null);setToast({msg:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
-      {payment&&<PayModal item={payment.item} slot={payment.slot} lang={lang} onSuccess={()=>{setToast({msg:"Session booked! 🎉"});setPayment(null);go("dashboard");}} onClose={()=>setPayment(null)}/>}
+      {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);localStorage.setItem("nateba_user",JSON.stringify(u));setAuthMode(null);setToast({msg:lang==="ka"?`კეთილი იყოს, ${u.name}! 🎉`:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
+      {payment&&<PayModal item={payment.item} slot={payment.slot} lang={lang} user={user} onSuccess={()=>{setToast({msg:lang==="ka"?"დაჯავშნილია! 🎉":"Session booked! 🎉"});setPayment(null);go("dashboard");}} onClose={()=>setPayment(null)}/>}
       {videoT&&<VideoRoom teacher={videoT} slot={videoSlot} lang={lang} onClose={()=>{setVideoT(null);setVideoSlot(null);}}/>}
       {msgT&&<MsgModal teacher={msgT} lang={lang} onClose={()=>setMsgT(null)}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
@@ -1450,7 +1633,7 @@ export default function App(){
             <div style={{fontSize:14,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{lang==="ka"?"შესულია:":"Logged in as"} <strong>{user.name}</strong></div>
             <div style={{display:"flex",gap:8}}>
               <PBtn onClick={()=>{go("dashboard");setMobileMenu(false);}} full size="sm">{t.nav_dash}</PBtn>
-              <OBtn onClick={()=>{setUser(null);localStorage.removeItem("nateba_user");go("home");setMobileMenu(false);}} full size="sm">{t.nav_out}</OBtn>
+              <OBtn onClick={()=>{setUser(null);go("home");setMobileMenu(false);}} full size="sm">{t.nav_out}</OBtn>
             </div>
           </div>:<div style={{display:"flex",gap:8}}>
             <PBtn onClick={()=>{setAuthMode("signup");setMobileMenu(false);}} full>{t.nav_signup}</PBtn>
