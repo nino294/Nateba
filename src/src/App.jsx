@@ -1,3 +1,4 @@
+import AIMatch from "./AIMatch";
 import { useState, useEffect, useRef } from "react";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
@@ -1281,6 +1282,9 @@ export default function App(){
         <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
           <PBtn onClick={()=>go("browse")} size="lg">{t.hero_cta}</PBtn>
           <OBtn onClick={()=>go("teach")} size="lg">{t.hero_cta2}</OBtn>
+        </div>
+        <div style={{marginTop:20,display:"flex",justifyContent:"center"}}>
+          <AIMatch lang={lang} teachers={allTeachers} onSelect={openT}/>
         </div>
       </div>
 
