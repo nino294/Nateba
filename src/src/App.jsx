@@ -1411,7 +1411,24 @@ export default function App(){
 
   const TeacherProfile=()=>{
     if(!selT)return null;
-    return <TeacherProfileView tv={selT} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/>;
+    // Ensure all required fields have safe defaults
+    const safeTv={
+      ...selT,
+      av:selT.av||(selT.name||"T").slice(0,2).toUpperCase(),
+      rating:selT.rating||5.0,
+      reviews:selT.reviews||0,
+      slots:selT.slots||[],
+      rl:selT.rl||[],
+      pkgs:selT.pkgs||[],
+      speaks:selT.speaks||["Georgian"],
+      resp:selT.resp||selT.response_time||"2 hrs",
+      ska:selT.ska||selT.skill_ka||selT.skill||"",
+      bka:selT.bka||selT.bio_ka||selT.bio||"",
+      bio:selT.bio||selT.bka||"",
+      online:selT.online!==false,
+      offline:selT.offline||false,
+    };
+    return <TeacherProfileView tv={safeTv} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/>;
   };
 
   const GroupsPage=()=>(
