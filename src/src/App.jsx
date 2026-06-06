@@ -1940,7 +1940,7 @@ export default function App(){
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
       {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT} onBrowse={()=>go("browse")}/>}}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT} onBrowse={()=>go("browse")}/>}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
