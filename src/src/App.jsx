@@ -94,6 +94,9 @@ const T = {
     studR:"Student rating",studS:"sessions",
     pent:"Pending",pena:"Accept",pend:"Decline",
     grp:"Group classes",
+    adm:"Admin",adm_apps:"Teacher Applications",adm_approve:"Approve",adm_reject:"Reject",
+    adm_pending:"Pending",adm_approved:"Approved",adm_rejected:"Rejected",adm_all:"All",
+    adm_empty:"No applications yet",adm_users:"Users",adm_bookings:"All Bookings",
   },
   ka:{
     nav_browse:"მოძებნე",nav_groups:"ჯგუფური გაკვეთილები",nav_teach:"სწავლება",
@@ -142,6 +145,9 @@ const T = {
     studR:"მოსწავლის რეიტინგი",studS:"სესია",
     pent:"მოლოდინში",pena:"მიღება",pend:"უარყოფა",
     grp:"ჯგუფური გაკვეთილები",
+    adm:"ადმინი",adm_apps:"მასწავლებლის განაცხადები",adm_approve:"დამტკიცება",adm_reject:"უარყოფა",
+    adm_pending:"მოლოდინში",adm_approved:"დამტკიცებული",adm_rejected:"უარყოფილი",adm_all:"ყველა",
+    adm_empty:"განაცხადი არ არის",adm_users:"მომხმარებლები",adm_bookings:"ყველა ჯავშანი",
   }
 };
 
@@ -1109,6 +1115,177 @@ const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,se
   );
 };
 
+// ── Admin Page ────────────────────────────────────────────────
+const ADMIN_EMAIL = "nino@pudogeorgia.com"; // change to your email
+
+const AdminPage=({lang,user,onBack})=>{
+  const t=T[lang];const isKa=lang==="ka";
+  const [tab,setTab]=useState("applications");
+  const [apps,setApps]=useState([]);
+  const [bookings,setBookings]=useState([]);
+  const [users,setUsers]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [msg,setMsg]=useState("");
+
+  // Check if user is admin
+  const isAdmin=user?.email===ADMIN_EMAIL||user?.email==="hello@nateba.ge";
+
+  useEffect(()=>{
+    if(isAdmin) loadAll();
+  },[]);
+
+  const loadAll=async()=>{
+    setLoading(true);
+    try{
+      const[{data:a},{data:b},{data:u}]=await Promise.all([
+        supabase.from("teacher_applications").select("*").order("created_at",{ascending:false}),
+        supabase.from("bookings").select("*").order("created_at",{ascending:false}),
+        supabase.from("users").select("*").order("created_at",{ascending:false}),
+      ]);
+      if(a) setApps(a);
+      if(b) setBookings(b);
+      if(u) setUsers(u);
+    }catch(e){console.error(e);}
+    setLoading(false);
+  };
+
+  const updateAppStatus=async(id,status,applicantUid)=>{
+    try{
+      await supabase.from("teacher_applications").update({status}).eq("id",id);
+      if(status==="approved"&&applicantUid){
+        await supabase.from("users").update({role:"tutor"}).eq("firebase_uid",applicantUid);
+      }
+      setApps(prev=>prev.map(a=>a.id===id?{...a,status}:a));
+      setMsg(status==="approved"?(isKa?"დამტკიცებულია ✅":"Approved ✅"):(isKa?"უარყოფილია ❌":"Rejected ❌"));
+      setTimeout(()=>setMsg(""),3000);
+    }catch(e){console.error(e);}
+  };
+
+  if(!isAdmin) return(
+    <div style={{minHeight:"60vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}>
+      <div style={{fontSize:48,marginBottom:16}}>🔒</div>
+      <div style={{fontSize:22,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:8}}>Access denied</div>
+      <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24}}>This page is only for Nateba admins.</div>
+      <PBtn onClick={onBack}>Back</PBtn>
+    </div>
+  );
+
+  const statusColor={pending:C.accent,approved:C.ok,rejected:C.red};
+  const filteredApps=tab==="applications"?apps:apps.filter(a=>a.status===tab);
+
+  return(
+    <div style={{maxWidth:1000,margin:"0 auto",padding:"40px 24px"}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:13,cursor:"pointer",marginBottom:24,padding:0,fontWeight:900}}>← {t.back}</button>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:32}}>
+        <div style={{fontSize:32,fontWeight:900,color:C.text,fontFamily:C.fb}}>🛡️ Admin Panel</div>
+        {msg&&<div style={{background:C.ok+"20",border:`2px solid ${C.ok}44`,borderRadius:C.radiusLg,padding:"8px 16px",fontSize:13,color:C.ok,fontFamily:C.fb,fontWeight:800}}>{msg}</div>}
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:28}}>
+        {[
+          ["📋",apps.length,"Applications","#1CB0F6"],
+          ["⏳",apps.filter(a=>a.status==="pending").length,"Pending","#E9A520"],
+          ["✅",apps.filter(a=>a.status==="approved").length,"Approved","#58CC02"],
+          ["📅",bookings.length,"Bookings","#A259FF"],
+        ].map(([icon,count,label,color])=>(
+          <div key={label} style={{background:color+"12",border:`2px solid ${color}33`,borderRadius:C.radiusLg,padding:"16px 18px",textAlign:"center"}}>
+            <div style={{fontSize:22,marginBottom:4}}>{icon}</div>
+            <div style={{fontSize:28,fontWeight:900,color,fontFamily:C.fb}}>{count}</div>
+            <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,fontWeight:700,textTransform:"uppercase"}}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.border}`,marginBottom:24,overflowX:"auto"}}>
+        {[["applications","📋 All Applications"],["pending","⏳ Pending"],["approved","✅ Approved"],["bookings","📅 Bookings"],["users","👥 Users"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"10px 18px",border:"none",background:"none",fontSize:13,fontWeight:900,fontFamily:C.fb,color:tab===k?C.accent:C.muted,borderBottom:`3px solid ${tab===k?C.accent:"transparent"}`,marginBottom:-2,cursor:"pointer",whiteSpace:"nowrap"}}>{l}</button>
+        ))}
+      </div>
+
+      {loading&&<div style={{textAlign:"center",padding:40,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
+
+      {/* Applications */}
+      {!loading&&(tab==="applications"||tab==="pending"||tab==="approved"||tab==="rejected")&&(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {(tab==="applications"?apps:apps.filter(a=>a.status===tab)).length===0&&(
+            <div style={{textAlign:"center",padding:40,color:C.muted,fontFamily:C.fb,fontSize:14}}>{t.adm_empty}</div>
+          )}
+          {(tab==="applications"?apps:apps.filter(a=>a.status===tab)).map(app=>(
+            <div key={app.id} style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"20px 22px",boxShadow:C.shadow}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{fontSize:17,fontWeight:900,color:C.text,fontFamily:C.fb}}>{app.name}</div>
+                    <span style={{background:statusColor[app.status]+"20",color:statusColor[app.status],borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:900,fontFamily:C.fb,border:`1.5px solid ${statusColor[app.status]}44`}}>{app.status}</span>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:6,marginBottom:10}}>
+                    {[["📧",app.email],["🎓",app.skill],["📂",app.category],["💰","₾"+app.price+"/session"],["🌐",app.online?"Online":""],["📍",app.offline?"In-person":""]].filter(([,v])=>v).map(([icon,val])=>(
+                      <div key={icon+val} style={{fontSize:12,color:C.mid,fontFamily:C.fb,fontWeight:600}}>{icon} {val}</div>
+                    ))}
+                  </div>
+                  {app.bio&&<div style={{fontSize:13,color:C.muted,fontFamily:C.fb,lineHeight:1.6,marginBottom:8,fontWeight:600,background:C.bg2,borderRadius:C.radiusSm,padding:"10px 12px"}}>{app.bio}</div>}
+                  {app.video_url&&<a href={app.video_url} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:700}}>🎥 Watch intro video</a>}
+                  <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:8}}>Applied: {new Date(app.created_at).toLocaleDateString()}</div>
+                </div>
+                {app.status==="pending"&&(
+                  <div style={{display:"flex",gap:8,flexShrink:0}}>
+                    <button onClick={()=>updateAppStatus(app.id,"rejected",app.firebase_uid)}
+                      style={{background:C.redLight,color:C.red,border:`2px solid ${C.red}33`,borderRadius:C.radiusLg,padding:"10px 18px",fontSize:13,fontWeight:900,fontFamily:C.fb,cursor:"pointer"}}>
+                      ❌ {t.adm_reject}
+                    </button>
+                    <PBtn onClick={()=>updateAppStatus(app.id,"approved",app.firebase_uid)} variant="primary">
+                      ✅ {t.adm_approve}
+                    </PBtn>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Bookings */}
+      {!loading&&tab==="bookings"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {bookings.length===0&&<div style={{textAlign:"center",padding:40,color:C.muted,fontFamily:C.fb,fontSize:14}}>No bookings yet</div>}
+          {bookings.map(b=>(
+            <div key={b.id} style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.student_name} → {b.teacher_name}</div>
+                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.skill} · {b.slot} · ₾{b.price}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.student_email}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:12,color:C.ok,fontFamily:C.fb,fontWeight:800}}>{b.status}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>{new Date(b.created_at).toLocaleDateString()}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Users */}
+      {!loading&&tab==="users"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {users.length===0&&<div style={{textAlign:"center",padding:40,color:C.muted,fontFamily:C.fb,fontSize:14}}>No users yet</div>}
+          {users.map(u=>(
+            <div key={u.id} style={{background:C.card,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{u.name}</div>
+                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{u.email}</div>
+              </div>
+              <div style={{background:u.role==="tutor"?C.ok+"20":C.primaryLight,color:u.role==="tutor"?C.ok:C.primary,borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:900,fontFamily:C.fb}}>{u.role||"student"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 export default function App(){
   const [lang,setLang]=useState(()=>{try{return localStorage.getItem("nateba_lang")||"ka";}catch{return "ka";}});
   const [page,setPage]=useState("home");
@@ -1261,7 +1438,7 @@ export default function App(){
           <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",fontFamily:C.fb}}>ისწავლე ის, რაც გიყვარს.</div>
         </div>
         <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
-          {[["tos",t.tost],["pp",t.topp],["faq",lang==="ka"?"ხშირად დასმული კითხვები":"FAQ"],["about","About"]].map(([p,l])=>(
+          {[["tos",t.tost],["pp",t.topp],["faq",lang==="ka"?"ხშირად დასმული კითხვები":"FAQ"],["about","About"],["admin","🛡️"]].map(([p,l])=>(
             <button key={p} onClick={()=>go(p)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontFamily:C.fb,fontSize:13,cursor:"pointer",padding:0,fontWeight:700,transition:"color 0.15s"}} onMouseEnter={e=>e.target.style.color="#fff"} onMouseLeave={e=>e.target.style.color="rgba(255,255,255,0.4)"}>{l}</button>
           ))}
         </div>
@@ -1498,7 +1675,8 @@ export default function App(){
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
       {page==="about"&&<AboutPage lang={lang} onBack={()=>go("home")} onSignup={()=>setAuthMode("signup")}/>}
-      {!["home","browse","teacher","groups","teach","dashboard","tos","pp","faq","about"].includes(page)&&<NotFoundPage onBack={()=>go("home")}/>}
+      {page==="admin"&&<AdminPage lang={lang} user={user} onBack={()=>go("home")}/>}
+      {!["home","browse","teacher","groups","teach","dashboard","tos","pp","faq","about","admin"].includes(page)&&<NotFoundPage onBack={()=>go("home")}/>}
       {!cookieAccepted&&<CookieBanner onAccept={acceptCookies} onDecline={declineCookies} onLearnMore={()=>go('pp')}/>}
       {showPromote&&<PromoteModal lang={lang} onClose={()=>setShowPromote(false)}/>}
       {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);try{localStorage.setItem("nateba_user",JSON.stringify(u));}catch{}setAuthMode(null);setToast({msg:lang==="ka"?`კეთილი იყოს, ${u.name}! 🎉`:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
