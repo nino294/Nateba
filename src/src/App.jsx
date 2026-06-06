@@ -1103,7 +1103,7 @@ const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,se
           </div>
         </div>
       </div>
-      <Footer/>
+      
     </div>
   );
 };
@@ -1428,7 +1428,7 @@ export default function App(){
       online:selT.online!==false,
       offline:selT.offline||false,
     };
-    return <TeacherProfileView tv={safeTv} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/>;
+    return <><TeacherProfileView tv={safeTv} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/><Footer/></>;
   };
 
   const GroupsPage=()=>(
