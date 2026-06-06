@@ -1009,12 +1009,7 @@ const TeacherProfileEditor=({lang,user,onBack})=>{
 
   if(loading) return <div style={{textAlign:"center",padding:60,color:C.muted,fontFamily:C.fb,fontSize:15}}>Loading...</div>;
 
-  const Sec=({title,color,children})=>(
-    <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}>
-      <div style={{fontSize:13,fontWeight:900,color,fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{title}</div>
-      {children}
-    </div>
-  );
+
 
   return(
     <div style={{maxWidth:700,margin:"0 auto",padding:"40px 24px"}}>
@@ -1024,7 +1019,7 @@ const TeacherProfileEditor=({lang,user,onBack})=>{
         <div style={{background:C.ok+"20",border:`2px solid ${C.ok}44`,borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:900,color:C.ok,fontFamily:C.fb}}>✓ {isKa?"დამტკიცებული":"Approved"}</div>
       </div>
       <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:28,fontWeight:600}}>{isKa?"შეავსე შენი პროფილი — ეს ის გვერდია, რასაც მოსწავლეები ნახავენ.":"Fill in your profile — this is what students will see."}</div>
-      <Sec title={isKa?"ძირითადი ინფორმაცია":"Basic Info"} color={C.primary}>
+      <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}><div style={{fontSize:13,fontWeight:900,color:C.primary,fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{isKa?"ძირითადი ინფორმაცია":"Basic Info"}</div>
         <Inp label={isKa?"სახელი და გვარი *":"Full name *"} value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div style={{marginBottom:16}}>
@@ -1045,8 +1040,8 @@ const TeacherProfileEditor=({lang,user,onBack})=>{
           <Inp label={isKa?"კურსი (ინგლისური)":"Skill (English)"} value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder="e.g. Piano"/>
         </div>
         <Inp label={isKa?"ენები (მძიმით)":"Languages (comma separated)"} value={f.speaks} onChange={e=>setF(p=>({...p,speaks:e.target.value}))} placeholder="Georgian, English"/>
-      </Sec>
-      <Sec title={isKa?"ფასი":"Pricing"} color={C.accent}>
+      </div>
+      <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}><div style={{fontSize:13,fontWeight:900,color:C.accent,fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{isKa?"ფასი":"Pricing"}</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Inp label={isKa?"ფასი სესიაზე (GEL) *":"Price per session (GEL) *"} type="number" value={f.price} onChange={e=>setF(p=>({...p,price:e.target.value}))} placeholder="40"/>
           <Inp label={isKa?"საცდელი გაკვეთილი (GEL)":"Trial lesson (GEL)"} type="number" value={f.trial_price} onChange={e=>setF(p=>({...p,trial_price:e.target.value}))} placeholder="15"/>
@@ -1058,13 +1053,13 @@ const TeacherProfileEditor=({lang,user,onBack})=>{
             </label>
           ))}
         </div>
-      </Sec>
-      <Sec title={isKa?"შენ შესახებ":"About you"} color="#A259FF">
+      </div>
+      <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}><div style={{fontSize:13,fontWeight:900,color:"#A259FF",fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{isKa?"შენ შესახებ":"About you"}</div>
         <Inp label={isKa?"ბიოგრაფია (ქართული) *":"Bio (Georgian) *"} value={f.bio_ka} onChange={e=>setF(p=>({...p,bio_ka:e.target.value}))} rows={3} placeholder="მოგვიყევი შენს გამოცდილებასა და სტილზე..."/>
         <Inp label={isKa?"ბიოგრაფია (ინგლისური)":"Bio (English)"} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={3} placeholder="Tell students about your experience..."/>
         <Inp label={isKa?"ინტრო ვიდეო URL":"Intro video URL (YouTube / Vimeo)"} value={f.video} onChange={e=>setF(p=>({...p,video:e.target.value}))} placeholder="https://youtube.com/watch?v=..."/>
-      </Sec>
-      <Sec title={isKa?"ხელმისაწვდომობა":"Availability"} color={C.ok}>
+      </div>
+      <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}><div style={{fontSize:13,fontWeight:900,color:C.ok,fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{isKa?"ხელმისაწვდომობა":"Availability"}</div>
         <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginBottom:14,fontWeight:600}}>{isKa?"აირჩიე დრო, როდესაც ხელმისაწვდომი ხარ":"Select times when you are available"}</div>
         <div style={{overflowX:"auto"}}>
           <table style={{borderCollapse:"collapse",width:"100%",minWidth:500}}>
@@ -1087,7 +1082,7 @@ const TeacherProfileEditor=({lang,user,onBack})=>{
           </table>
         </div>
         <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:10,fontWeight:600}}>{slots.length} {isKa?"სლოტი არჩეული":"slots selected"}</div>
-      </Sec>
+      </div>
       {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>⚠️ {err}</div>}
       {savedOk&&<div style={{background:C.okLight,border:`2px solid ${C.ok}44`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.ok,fontFamily:C.fb,fontWeight:700}}>✓ {isKa?"პროფილი შენახულია!":"Profile saved!"}</div>}
       <PBtn onClick={save} full loading={saving} size="lg">{isKa?"პროფილის შენახვა":"Save profile"}</PBtn>
