@@ -567,8 +567,8 @@ const TeachPage=({lang,onBack,user,onLogin})=>{
 };
 
 
-const Dashboard=({user,lang,onJoinVideo,onMsg})=>{
-  const t=T[lang];const isKa=lang==="ka";const isTutor=user.role==="tutor";
+const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher,onBrowse})=>{
+  const t=T[lang];const isKa=lang==="ka";const isKa=lang==="ka";const isTutor=user.role==="tutor";
   const [tab,setTab]=useState("upcoming");const [showStu,setShowStu]=useState(null);
   const [bookings,setBookings]=useState([]);const [loadingB,setLoadingB]=useState(true);const [appStatus,setAppStatus]=useState(null);
   useEffect(()=>{loadBookings();checkApplication();},[]);
@@ -953,6 +953,144 @@ const NewsletterForm=({lang})=>{
       <PBtn onClick={submit} loading={loading} disabled={!email.includes("@")}>
         {isKa?"გამოწერა":"Subscribe"}
       </PBtn>
+    </div>
+  );
+};
+
+
+// ── Teacher Profile Editor ─────────────────────────────────────
+const TeacherProfileEditor=({lang,user,onBack})=>{
+  const isKa=lang==="ka";
+  const [f,setF]=useState({name:user?.name||"",cat:"school",skill:"",skill_ka:"",price:"40",trial_price:"15",bio:"",bio_ka:"",video:"",online:true,offline:false,speaks:"Georgian",response_time:"2 hrs"});
+  const [slots,setSlots]=useState([]);
+  const [loading,setLoading]=useState(false);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const [savedOk,setSavedOk]=useState(false);
+  const days=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const times=["08:00","09:00","10:00","11:00","12:00","13:00","14:00","15:00","16:00","17:00","18:00","19:00","20:00","21:00"];
+  const CATS=[{id:"school",label:"School Subjects",lka:"სკოლის საგნები"},{id:"music",label:"Music & Vocals",lka:"მუსიკა და ვოკალი"},{id:"arts",label:"Arts & Crafts",lka:"ხელოვნება"},{id:"floristry",label:"Floristry & Garden",lka:"ფლორისტიკა"},{id:"fitness",label:"Fitness & Wellness",lka:"ფიტნესი"},{id:"dance",label:"Dance",lka:"ცეკვა"},{id:"cooking",label:"Food & Cooking",lka:"კულინარია"},{id:"tech",label:"Tech & Business",lka:"ტექნოლოგია"},{id:"photo",label:"Photography & Film",lka:"ფოტო და ვიდეო"},{id:"languages",label:"Languages",lka:"ენები"},{id:"beauty",label:"Beauty & Style",lka:"სილამაზე"},{id:"culture",label:"Georgian Culture",lka:"ქართული კულტურა"},{id:"mind",label:"Mind & Creativity",lka:"გონება და შემოქმედება"}];
+
+  useEffect(()=>{
+    const load=async()=>{
+      setLoading(true);
+      try{
+        const uid=user?.uid||user?.phone;
+        const{data}=await supabase.from("teacher_profiles").select("*").eq("firebase_uid",uid).single();
+        if(data){
+          setF({name:data.name||user?.name||"",cat:data.category||"school",skill:data.skill||"",skill_ka:data.skill_ka||"",price:String(data.price||40),trial_price:String(data.trial_price||15),bio:data.bio||"",bio_ka:data.bio_ka||"",video:data.video_url||"",online:data.online!==false,offline:data.offline||false,speaks:(data.speaks||["Georgian"]).join(", "),response_time:data.response_time||"2 hrs"});
+          const{data:sData}=await supabase.from("teacher_slots").select("slot").eq("firebase_uid",uid);
+          if(sData) setSlots(sData.map(s=>s.slot));
+        }
+      }catch(e){}
+      setLoading(false);
+    };
+    load();
+  },[]);
+
+  const toggleSlot=(day,time)=>{
+    const s=`${day} ${time}`;
+    setSlots(prev=>prev.includes(s)?prev.filter(x=>x!==s):[...prev,s]);
+  };
+
+  const save=async()=>{
+    if(!f.name||!f.skill_ka||!f.price||!f.bio_ka){setErr(isKa?"შეავსე სავალდებულო ველები (*)":"Please fill in required fields (*)");return;}
+    setSaving(true);setErr("");
+    try{
+      const uid=user?.uid||user?.phone;
+      const{error}=await supabase.from("teacher_profiles").upsert({firebase_uid:uid,name:f.name,email:user?.email||null,category:f.cat,skill:f.skill||f.skill_ka,skill_ka:f.skill_ka||f.skill,price:parseInt(f.price),trial_price:parseInt(f.trial_price||15),bio:f.bio||f.bio_ka,bio_ka:f.bio_ka||f.bio,video_url:f.video||null,online:f.online,offline:f.offline,speaks:f.speaks.split(",").map(s=>s.trim()).filter(Boolean),response_time:f.response_time||"2 hrs",active:true},{onConflict:"firebase_uid"});
+      if(error) throw error;
+      await supabase.from("teacher_slots").delete().eq("firebase_uid",uid);
+      if(slots.length>0) await supabase.from("teacher_slots").insert(slots.map(s=>({firebase_uid:uid,slot:s})));
+      setSavedOk(true);setTimeout(()=>setSavedOk(false),3000);
+    }catch(e){setErr(isKa?"შეცდომა შენახვისას.":"Error saving. Please try again.");}
+    setSaving(false);
+  };
+
+  if(loading) return <div style={{textAlign:"center",padding:60,color:C.muted,fontFamily:C.fb,fontSize:15}}>Loading...</div>;
+
+  const Sec=({title,color,children})=>(
+    <div style={{background:C.bg2,borderRadius:C.radiusLg,padding:"20px 22px",marginBottom:16,border:`2px solid ${C.border}`}}>
+      <div style={{fontSize:13,fontWeight:900,color,fontFamily:C.fb,marginBottom:14,textTransform:"uppercase",letterSpacing:"0.8px"}}>{title}</div>
+      {children}
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:700,margin:"0 auto",padding:"40px 24px"}}>
+      <button onClick={onBack} style={{background:"none",border:"none",color:C.primary,fontFamily:C.fb,fontSize:13,cursor:"pointer",marginBottom:24,padding:0,fontWeight:900}}>← {isKa?"უკან":"Back"}</button>
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:8}}>
+        <div style={{fontSize:32,fontWeight:900,color:C.text,fontFamily:C.fb}}>{isKa?"ჩემი პროფილი":"My Teacher Profile"}</div>
+        <div style={{background:C.ok+"20",border:`2px solid ${C.ok}44`,borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:900,color:C.ok,fontFamily:C.fb}}>✓ {isKa?"დამტკიცებული":"Approved"}</div>
+      </div>
+      <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:28,fontWeight:600}}>{isKa?"შეავსე შენი პროფილი — ეს ის გვერდია, რასაც მოსწავლეები ნახავენ.":"Fill in your profile — this is what students will see."}</div>
+      <Sec title={isKa?"ძირითადი ინფორმაცია":"Basic Info"} color={C.primary}>
+        <Inp label={isKa?"სახელი და გვარი *":"Full name *"} value={f.name} onChange={e=>setF(p=>({...p,name:e.target.value}))}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{isKa?"კატეგორია":"Category"}</label>
+            <select value={f.cat} onChange={e=>setF(p=>({...p,cat:e.target.value}))} style={{width:"100%",padding:"13px 16px",background:"#fff",border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none"}}>
+              {CATS.map(c=><option key={c.id} value={c.id}>{isKa?c.lka:c.label}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{display:"block",fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:6}}>{isKa?"გამოხმაურების დრო":"Response time"}</label>
+            <select value={f.response_time} onChange={e=>setF(p=>({...p,response_time:e.target.value}))} style={{width:"100%",padding:"13px 16px",background:"#fff",border:`2px solid ${C.border}`,borderRadius:C.radius,fontSize:14,fontFamily:C.fb,color:C.text,outline:"none"}}>
+              {["30 min","1 hr","2 hrs","3 hrs","4 hrs","Same day"].map(r=><option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Inp label={isKa?"კურსი (ქართული) *":"Skill (Georgian) *"} value={f.skill_ka} onChange={e=>setF(p=>({...p,skill_ka:e.target.value}))} placeholder="მაგ: პიანო"/>
+          <Inp label={isKa?"კურსი (ინგლისური)":"Skill (English)"} value={f.skill} onChange={e=>setF(p=>({...p,skill:e.target.value}))} placeholder="e.g. Piano"/>
+        </div>
+        <Inp label={isKa?"ენები (მძიმით)":"Languages (comma separated)"} value={f.speaks} onChange={e=>setF(p=>({...p,speaks:e.target.value}))} placeholder="Georgian, English"/>
+      </Sec>
+      <Sec title={isKa?"ფასი":"Pricing"} color={C.accent}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Inp label={isKa?"ფასი სესიაზე (GEL) *":"Price per session (GEL) *"} type="number" value={f.price} onChange={e=>setF(p=>({...p,price:e.target.value}))} placeholder="40"/>
+          <Inp label={isKa?"საცდელი გაკვეთილი (GEL)":"Trial lesson (GEL)"} type="number" value={f.trial_price} onChange={e=>setF(p=>({...p,trial_price:e.target.value}))} placeholder="15"/>
+        </div>
+        <div style={{display:"flex",gap:20}}>
+          {[["online",isKa?"ონლაინ":"Online"],["offline",isKa?"ოფლაინ":"In-person"]].map(([k,l])=>(
+            <label key={k} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontFamily:C.fb,fontSize:14,color:C.mid,fontWeight:700}}>
+              <input type="checkbox" checked={f[k]} onChange={e=>setF(p=>({...p,[k]:e.target.checked}))} style={{accentColor:C.primary}}/>{l}
+            </label>
+          ))}
+        </div>
+      </Sec>
+      <Sec title={isKa?"შენ შესახებ":"About you"} color="#A259FF">
+        <Inp label={isKa?"ბიოგრაფია (ქართული) *":"Bio (Georgian) *"} value={f.bio_ka} onChange={e=>setF(p=>({...p,bio_ka:e.target.value}))} rows={3} placeholder="მოგვიყევი შენს გამოცდილებასა და სტილზე..."/>
+        <Inp label={isKa?"ბიოგრაფია (ინგლისური)":"Bio (English)"} value={f.bio} onChange={e=>setF(p=>({...p,bio:e.target.value}))} rows={3} placeholder="Tell students about your experience..."/>
+        <Inp label={isKa?"ინტრო ვიდეო URL":"Intro video URL (YouTube / Vimeo)"} value={f.video} onChange={e=>setF(p=>({...p,video:e.target.value}))} placeholder="https://youtube.com/watch?v=..."/>
+      </Sec>
+      <Sec title={isKa?"ხელმისაწვდომობა":"Availability"} color={C.ok}>
+        <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginBottom:14,fontWeight:600}}>{isKa?"აირჩიე დრო, როდესაც ხელმისაწვდომი ხარ":"Select times when you are available"}</div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{borderCollapse:"collapse",width:"100%",minWidth:500}}>
+            <thead><tr><th style={{padding:"6px 8px",fontSize:11,fontFamily:C.fb,color:C.muted,fontWeight:700,textAlign:"left"}}></th>{days.map(d=><th key={d} style={{padding:"6px 8px",fontSize:11,fontFamily:C.fb,color:C.primary,fontWeight:900,textAlign:"center"}}>{d}</th>)}</tr></thead>
+            <tbody>{times.map(time=>(
+              <tr key={time}>
+                <td style={{padding:"4px 8px",fontSize:11,fontFamily:C.fb,color:C.muted,fontWeight:700,whiteSpace:"nowrap"}}>{time}</td>
+                {days.map(day=>{
+                  const s=`${day} ${time}`;const on=slots.includes(s);
+                  return(<td key={day} style={{padding:"3px 4px",textAlign:"center"}}>
+                    <div onClick={()=>toggleSlot(day,time)} style={{width:28,height:28,borderRadius:8,background:on?C.primary:C.border,cursor:"pointer",margin:"0 auto",transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
+                      onMouseEnter={e=>!on&&(e.currentTarget.style.background=C.primaryLight)}
+                      onMouseLeave={e=>!on&&(e.currentTarget.style.background=C.border)}>
+                      {on&&<span style={{color:"#fff",fontSize:12,fontWeight:900}}>✓</span>}
+                    </div>
+                  </td>);
+                })}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:10,fontWeight:600}}>{slots.length} {isKa?"სლოტი არჩეული":"slots selected"}</div>
+      </Sec>
+      {err&&<div style={{background:C.redLight,border:`2px solid ${C.red}33`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.red,fontFamily:C.fb,fontWeight:700}}>⚠️ {err}</div>}
+      {savedOk&&<div style={{background:C.okLight,border:`2px solid ${C.ok}44`,borderRadius:C.radius,padding:"11px 16px",marginBottom:14,fontSize:13,color:C.ok,fontFamily:C.fb,fontWeight:700}}>✓ {isKa?"პროფილი შენახულია!":"Profile saved!"}</div>}
+      <PBtn onClick={save} full loading={saving} size="lg">{isKa?"პროფილის შენახვა":"Save profile"}</PBtn>
     </div>
   );
 };
@@ -1405,7 +1543,7 @@ export default function App(){
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
       {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT} onGoTeach={()=>go("teach")} onPromote={()=>setShowPromote(true)} saved={saved} onOpenTeacher={openT} onBrowse={()=>go("browse")}/>}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT}/>}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
