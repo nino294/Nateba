@@ -633,7 +633,7 @@ const TeachPage=({lang,onBack,user,onLogin})=>{
 
 
 const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher,onBrowse})=>{
-  const t=T[lang];const isKa=lang==="ka";const isKa=lang==="ka";const isTutor=user.role==="tutor";
+  const t=T[lang];const isKa=lang==="ka";const isTutor=user.role==="tutor";
   const [tab,setTab]=useState("upcoming");const [showStu,setShowStu]=useState(null);
   const [bookings,setBookings]=useState([]);const [loadingB,setLoadingB]=useState(true);const [appStatus,setAppStatus]=useState(null);
   useEffect(()=>{loadBookings();checkApplication();},[]);
