@@ -1344,6 +1344,7 @@ export default function App(){
           {user?<>
             <button onClick={()=>go("dashboard")} style={{border:"none",background:"transparent",color:C.muted,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:700}}>{t.nav_dash}</button>
             <Av initials={user.name.slice(0,2).toUpperCase()} bg={C.primary} size={30}/>
+            {user?.email==="nino@pudogeorgia.com"&&<button onClick={()=>go("admin")} style={{border:"none",background:"#FF4B4B15",color:"#FF4B4B",borderRadius:C.radiusSm,padding:"6px 12px",fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:900}}>🛡️ Admin</button>}
             <button onClick={()=>{setUser(null);try{localStorage.removeItem("nateba_user");}catch{}go("home");}} style={{border:"none",background:"transparent",color:C.muted,fontSize:12,cursor:"pointer",fontFamily:C.fb,fontWeight:700,marginLeft:4}}>{t.nav_out}</button>
           </>:<>
             <button onClick={()=>setAuthMode("login")} style={{border:"none",background:"transparent",color:C.mid,borderRadius:C.radiusSm,padding:"8px 14px",fontSize:13,cursor:"pointer",fontFamily:C.fb,fontWeight:900}}>{t.nav_login}</button>
