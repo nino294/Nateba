@@ -338,25 +338,89 @@ const PostSession=({teacher,lang,onClose})=>{
 };
 
 const VideoRoom=({teacher,slot,lang,onClose})=>{
-  const t=T[lang];
-  const room=`nateba-${teacher.name.replace(/\s+/g,"-").toLowerCase()}-${(slot||"session").replace(/[\s:]/g,"-")}`;
-  const [ended,setEnded]=useState(false);const [showRep,setShowRep]=useState(false);
+  const containerRef=useRef(null);
+  const callFrameRef=useRef(null);
+  const [ended,setEnded]=useState(false);
+  const [showRep,setShowRep]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState(null);
+
+  const roomName=`nateba-${teacher.name.replace(/\s+/g,"-").toLowerCase()}-${(slot||"session").replace(/[\s:]/g,"-")}`;
+
+  useEffect(()=>{
+    let cancelled=false;
+    const setup=async()=>{
+      try{
+        const res=await fetch("/api/create-room",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({roomName})});
+        const data=await res.json();
+        if(cancelled)return;
+        if(!data.url)throw new Error("No room URL");
+        const loadScript=()=>new Promise((resolve,reject)=>{
+          if(window.DailyIframe){resolve();return;}
+          const s=document.createElement("script");
+          s.src="https://unpkg.com/@daily-co/daily-js";
+          s.onload=resolve;s.onerror=reject;
+          document.head.appendChild(s);
+        });
+        await loadScript();
+        if(cancelled)return;
+        if(!containerRef.current)return;
+        const frame=window.DailyIframe.createFrame(containerRef.current,{
+          iframeStyle:{width:"100%",height:"100%",border:"none"},
+          showLeaveButton:false,
+          showFullscreenButton:true,
+        });
+        callFrameRef.current=frame;
+        frame.on("joined-meeting",()=>{if(!cancelled)setLoading(false);});
+        frame.on("left-meeting",()=>{if(!cancelled)setEnded(true);});
+        frame.on("error",()=>{if(!cancelled){setError("Connection error. Please try again.");setLoading(false);}});
+        await frame.join({url:data.url});
+      }catch(e){
+        if(!cancelled){setError("Could not start video session. Please try again.");setLoading(false);}
+      }
+    };
+    setup();
+    return()=>{
+      cancelled=true;
+      if(callFrameRef.current){try{callFrameRef.current.destroy();}catch(e){}callFrameRef.current=null;}
+    };
+  },[roomName]);
+
   if(ended)return <PostSession teacher={teacher} lang={lang} onClose={onClose}/>;
   return(
     <div style={{position:"fixed",inset:0,background:"#0D1117",zIndex:9998,display:"flex",flexDirection:"column"}}>
-      <div style={{background:C.white,padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`2px solid ${C.border}`,flexShrink:0}}>
+      <div style={{background:"#FFFFFF",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:`2px solid ${C.border}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <Av initials={teacher.av} bg={CAT_COLORS[teacher.cat]||C.primary} size={34}/>
           <div><div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{teacher.name}</div><div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>{teacher.skill}</div></div>
           <Badge color={C.ok}>● Live</Badge>
         </div>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {loading&&!error&&<span style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700}}>Connecting...</span>}
           <button onClick={()=>setShowRep(true)} style={{background:C.redLight,color:C.red,border:"none",borderRadius:C.radiusSm,padding:"8px 16px",fontSize:13,fontWeight:700,fontFamily:C.fb,cursor:"pointer"}}>{lang==="ka"?"შეტყობინება":"Report"}</button>
           <PBtn onClick={()=>setEnded(true)} size="sm" variant="red">End session</PBtn>
         </div>
       </div>
-      <iframe src={`https://8x8.vc/${room}`} style={{flex:1,border:"none"}} allow="camera; microphone; fullscreen; display-capture" title="Session"/>
+      {error?(
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:24}}>
+          <div style={{fontSize:40}}>😕</div>
+          <div style={{fontSize:16,color:"#fff",fontFamily:C.fb,fontWeight:700,textAlign:"center"}}>{error}</div>
+          <PBtn onClick={()=>{setError(null);setLoading(true);}}>Try again</PBtn>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"rgba(255,255,255,0.5)",fontFamily:C.fb,fontSize:13,cursor:"pointer",fontWeight:700}}>Close</button>
+        </div>
+      ):(
+        <div style={{flex:1,position:"relative"}}>
+          {loading&&(
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,zIndex:1}}>
+              <div style={{width:48,height:48,border:"4px solid rgba(255,255,255,0.15)",borderTop:`4px solid ${C.primary}`,borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+              <div style={{color:"rgba(255,255,255,0.6)",fontFamily:C.fb,fontSize:14,fontWeight:700}}>Starting video session...</div>
+            </div>
+          )}
+          <div ref={containerRef} style={{width:"100%",height:"100%"}}/>
+        </div>
+      )}
       {showRep&&<ReportModal teacher={teacher} lang={lang} onClose={()=>setShowRep(false)}/>}
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 };
