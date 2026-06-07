@@ -1201,7 +1201,7 @@ const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot,sele
 };
 
 
-const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
+const TeacherProfileView=({tv,lang,t,slot,setSlot,calendarDate,setCalendarDate,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
   const catColor=CAT_COLORS[tv.cat]||C.primary;
   const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
   const [calendarDate,setCalendarDate]=useState(null);
@@ -1492,7 +1492,7 @@ export default function App(){
 
   const t=T[lang];
   const go=p=>{setPage(p);window.scrollTo(0,0);};
-  const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);go("teacher");};
+  const openT=tv=>{setSelT(tv);setPTab("about");setSlot(null);setCalendarDate(null);go("teacher");};
   const toggleSave=id=>{
     if(!user){setAuthMode("login");return;}
     setSaved(s=>{const n=s.includes(id)?s.filter(x=>x!==id):[...s,id];try{localStorage.setItem("nateba_saved",JSON.stringify(n));}catch{}return n;});
@@ -1791,7 +1791,7 @@ export default function App(){
       online:selT.online!==false,
       offline:selT.offline||false,
     };
-    return <><TeacherProfileView tv={safeTv} lang={lang} t={t} slot={slot} setSlot={setSlot} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/><Footer/></>;
+    return <><TeacherProfileView tv={safeTv} lang={lang} t={t} slot={slot} setSlot={setSlot} calendarDate={calendarDate} setCalendarDate={setCalendarDate} user={user} setAuthMode={setAuthMode} setPayment={setPayment} setMsgT={setMsgT} setVideoT={setVideoT} setVideoSlot={setVideoSlot} pTab={pTab} setPTab={setPTab} go={go}/><Footer/></>;
   };
 
   const GroupsPage=()=>(
