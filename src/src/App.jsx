@@ -375,7 +375,7 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
         frame.on("joined-meeting",()=>{if(!cancelled){hasJoinedRef.current=true;setLoading(false);}});
         frame.on("left-meeting",()=>{if(!cancelled&&hasJoinedRef.current)setEnded(true);});
         frame.on("error",()=>{if(!cancelled){setError("Connection error. Please try again.");setLoading(false);}});
-        await frame.join({url:data.url});
+        await frame.join({url:data.url,userName:teacher.name||"Nateba User",showLeaveButton:true});
       }catch(e){
         if(!cancelled){setError("Could not start video session. Please try again.");setLoading(false);}
       }
