@@ -346,7 +346,7 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState(null);
 
-  const roomName=`nateba-${teacher.name.replace(/\s+/g,"-").toLowerCase()}-${(slot||"session").replace(/[\s:]/g,"-")}`;
+  const roomName=(()=>{const t=teacher.name.replace(/\s+/g,"-").toLowerCase().slice(0,10);const s=(slot||"session").replace(/[\s:]/g,"-").slice(0,10);return `nt-${t}-${s}`.replace(/[^a-z0-9-]/g,"-").slice(0,35);})();
 
   useEffect(()=>{
     let cancelled=false;
