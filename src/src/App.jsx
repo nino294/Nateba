@@ -1031,6 +1031,177 @@ const NewsletterForm=({lang})=>{
 
 
 // ── Teacher Profile Editor ─────────────────────────────────────
+// ── Booking Calendar ──────────────────────────────────────────
+const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTHS_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTHS_KA = ["იანვარი","თებერვალი","მარტი","აპრილი","მაისი","ივნისი","ივლისი","აგვისტო","სექტემბერი","ოქტომბერი","ნოემბერი","დეკემბერი"];
+
+const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot})=>{
+  const isKa=lang==="ka";
+  const [currentDate,setCurrentDate]=useState(new Date());
+  const [selectedDate,setSelectedDate]=useState(null);
+  const [bookedSlots,setBookedSlots]=useState([]);
+  const [loadingBooked,setLoadingBooked]=useState(false);
+
+  // Get current month view
+  const year=currentDate.getFullYear();
+  const month=currentDate.getMonth();
+  const firstDay=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const today=new Date();
+  today.setHours(0,0,0,0);
+
+  // Load booked slots for this teacher
+  useEffect(()=>{
+    if(!teacherId) return;
+    const load=async()=>{
+      setLoadingBooked(true);
+      try{
+        const{data}=await supabase.from("bookings")
+          .select("slot")
+          .eq("teacher_firebase_uid",teacherId)
+          .eq("status","confirmed");
+        if(data) setBookedSlots(data.map(b=>b.slot));
+      }catch(e){}
+      setLoadingBooked(false);
+    };
+    load();
+  },[teacherId]);
+
+  // Check if a day has available slots
+  const getDayName=(date)=>DAYS[date.getDay()];
+
+  const getDaySlots=(date)=>{
+    const dayName=getDayName(date);
+    return availableSlots.filter(s=>s.startsWith(dayName));
+  };
+
+  const isDateAvailable=(date)=>{
+    const d=new Date(date);d.setHours(0,0,0,0);
+    if(d<today) return false;
+    return getDaySlots(date).length>0;
+  };
+
+  const getSlotDateTime=(date,slot)=>{
+    // slot is like "Mon 10:00", we want "2025-06-14 10:00"
+    const time=slot.split(" ")[1];
+    const y=date.getFullYear();
+    const m=String(date.getMonth()+1).padStart(2,"0");
+    const d=String(date.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d} ${time}`;
+  };
+
+  const isSlotBooked=(date,slot)=>{
+    const dt=getSlotDateTime(date,slot);
+    return bookedSlots.includes(dt);
+  };
+
+  const formatDate=(date)=>{
+    const months=isKa?MONTHS_KA:MONTHS_EN;
+    return `${date.getDate()} ${months[date.getMonth()]}`;
+  };
+
+  const selectedDateSlots=selectedDate?getDaySlots(selectedDate):[];
+
+  return(
+    <div>
+      {/* Month navigation */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <button onClick={()=>setCurrentDate(new Date(year,month-1,1))}
+          style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusSm,width:32,height:32,cursor:"pointer",fontSize:16,color:C.muted,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+        <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>
+          {isKa?MONTHS_KA[month]:MONTHS_EN[month]} {year}
+        </div>
+        <button onClick={()=>setCurrentDate(new Date(year,month+1,1))}
+          style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusSm,width:32,height:32,cursor:"pointer",fontSize:16,color:C.muted,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+      </div>
+
+      {/* Day headers */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+        {(isKa?["კვ","ორ","სა","ოთ","ხუ","პა","შა"]:["Su","Mo","Tu","We","Th","Fr","Sa"]).map(d=>(
+          <div key={d} style={{textAlign:"center",fontSize:10,color:C.muted,fontFamily:C.fb,fontWeight:900,padding:"4px 0"}}>{d}</div>
+        ))}
+      </div>
+
+      {/* Calendar grid */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:16}}>
+        {Array.from({length:firstDay}).map((_,i)=>(
+          <div key={"e"+i}/>
+        ))}
+        {Array.from({length:daysInMonth}).map((_,i)=>{
+          const date=new Date(year,month,i+1);
+          const available=isDateAvailable(date);
+          const isToday=date.toDateString()===new Date().toDateString();
+          const isSelected=selectedDate&&date.toDateString()===selectedDate.toDateString();
+          const isPast=date<today;
+
+          return(
+            <button key={i} onClick={()=>{if(available){setSelectedDate(date);onSelect(null);}}}
+              disabled={!available}
+              style={{
+                aspectRatio:"1",
+                borderRadius:C.radiusSm,
+                border:`2px solid ${isSelected?"#1CB0F6":isToday?"#E9A520":available?"#58CC0244":"transparent"}`,
+                background:isSelected?"#1CB0F6":isToday&&available?"#FFF3E0":available?"#E8FBD4":isPast?"transparent":C.bg2,
+                color:isSelected?"#fff":isPast?"#CCCCCC":available?"#1A1A1A":C.muted,
+                fontSize:12,fontWeight:isSelected||isToday?900:600,
+                fontFamily:C.fb,cursor:available?"pointer":"default",
+                transition:"all 0.15s",
+                display:"flex",alignItems:"center",justifyContent:"center",
+              }}
+              onMouseEnter={e=>{if(available&&!isSelected)e.currentTarget.style.background="#E0F4FF";}}
+              onMouseLeave={e=>{if(available&&!isSelected)e.currentTarget.style.background="#E8FBD4";}}>
+              {i+1}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Time slots for selected date */}
+      {selectedDate&&(
+        <div>
+          <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.8px"}}>
+            {formatDate(selectedDate)} — {isKa?"დრო":"Time"}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {selectedDateSlots.map(slot=>{
+              const booked=isSlotBooked(selectedDate,slot);
+              const time=slot.split(" ")[1];
+              const fullSlot=getSlotDateTime(selectedDate,slot);
+              const isSelected=selectedSlot===fullSlot;
+              return(
+                <button key={slot} onClick={()=>!booked&&onSelect(fullSlot)}
+                  disabled={booked}
+                  style={{
+                    padding:"10px 6px",
+                    border:`2px solid ${isSelected?"#1CB0F6":booked?"#EEEEEE":"#E0EEF7"}`,
+                    borderRadius:C.radiusSm,
+                    background:isSelected?"#1CB0F6":booked?"#F5F5F5":"#F0F8FF",
+                    color:isSelected?"#fff":booked?"#CCCCCC":"#1A1A1A",
+                    fontSize:13,fontFamily:C.fb,fontWeight:800,
+                    cursor:booked?"not-allowed":"pointer",
+                    textDecoration:booked?"line-through":"none",
+                    transition:"all 0.15s",
+                  }}>
+                  {time}
+                  {booked&&<div style={{fontSize:9,color:"#AAAAAA",fontWeight:600}}>{isKa?"დაჯავშნილი":"booked"}</div>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!selectedDate&&availableSlots.length>0&&(
+        <div style={{textAlign:"center",fontSize:12,color:C.muted,fontFamily:C.fb,padding:"8px 0",fontWeight:600}}>
+          {isKa?"აირჩიე თარიღი კალენდარზე":"Select a date on the calendar"}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
   const catColor=CAT_COLORS[tv.cat]||C.primary;
   const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
@@ -1098,9 +1269,17 @@ const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,se
             </div>
             {tv.offline&&<div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radius,padding:"9px 13px",marginBottom:14,fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:700}}>{t.bof}</div>}
             <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:10}}>{t.bs}</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:16}}>
-              {profileSlots.length===0&&<div style={{gridColumn:"1/-1",textAlign:"center",fontSize:12,color:C.muted,fontFamily:C.fb,padding:"8px 0"}}>{lang==="ka"?"ხელმისაწვდომი დრო არ არის":"No slots available yet"}</div>}
-              {profileSlots.map(s=>(<button key={s} onClick={()=>setSlot(s)} style={{padding:"8px 4px",border:`2px solid ${slot===s?catColor:C.border}`,borderRadius:C.radiusSm,background:slot===s?catColor+"15":C.bg2,color:slot===s?catColor:C.muted,fontSize:10,fontFamily:C.fb,fontWeight:900,cursor:"pointer",textAlign:"center",transition:"all 0.15s"}}>{s}</button>))}
+            <div style={{marginBottom:16}}>
+              {profileSlots.length===0
+                ?<div style={{textAlign:"center",fontSize:12,color:C.muted,fontFamily:C.fb,padding:"8px 0"}}>{lang==="ka"?"ხელმისაწვდომი დრო არ არის":"No slots available yet"}</div>
+                :<BookingCalendar
+                  teacherId={tv.firebase_uid}
+                  availableSlots={profileSlots}
+                  lang={lang}
+                  onSelect={setSlot}
+                  selectedSlot={slot}
+                />
+              }
             </div>
             <PBtn onClick={()=>{if(!slot)return;if(!user){setAuthMode("login");}else{setPayment({item:tv,slot});}}} full disabled={!slot} size="lg">{t.bc}</PBtn>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10}}>
