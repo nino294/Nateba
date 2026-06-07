@@ -640,62 +640,170 @@ const TeachPage=({lang,onBack,user,onLogin})=>{
 
 
 const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTeacher,onBrowse})=>{
-  const t=T[lang];const isKa=lang==="ka";const isTutor=user.role==="tutor";
-  const [tab,setTab]=useState("upcoming");const [showStu,setShowStu]=useState(null);
-  const [bookings,setBookings]=useState([]);const [loadingB,setLoadingB]=useState(true);const [appStatus,setAppStatus]=useState(null);
-  useEffect(()=>{loadBookings();checkApplication();},[]);
-  const loadBookings=async()=>{setLoadingB(true);try{const uid=user?.uid||user?.phone;const{data}=await supabase.from("bookings").select("*").eq("student_firebase_uid",uid).order("created_at",{ascending:false});if(data)setBookings(data);}catch(e){console.error(e);}setLoadingB(false);};
-  const checkApplication=async()=>{try{const uid=user?.uid||user?.phone;const{data}=await supabase.from("teacher_applications").select("status").eq("firebase_uid",uid).order("created_at",{ascending:false}).limit(1).single();if(data)setAppStatus(data.status);}catch(e){}};
+  const t=T[lang];const isKa=lang==="ka";
+  const isTutor=user.role==="tutor";
+  const [tab,setTab]=useState(isTutor?"teaching":"upcoming");
+  const [bookings,setBookings]=useState([]);
+  const [teacherBookings,setTeacherBookings]=useState([]);
+  const [loadingB,setLoadingB]=useState(true);
+  const [appStatus,setAppStatus]=useState(null);
+
+  useEffect(()=>{
+    loadBookings();
+    if(!isTutor) checkApplication();
+  },[user]);
+
+  const loadBookings=async()=>{
+    setLoadingB(true);
+    try{
+      const uid=user.uid||user.phone;
+      const{data:sData}=await supabase.from("bookings").select("*").eq("student_firebase_uid",uid).order("created_at",{ascending:false});
+      if(sData) setBookings(sData);
+      if(isTutor){
+        const{data:tData}=await supabase.from("bookings").select("*").eq("teacher_firebase_uid",uid).order("created_at",{ascending:false});
+        if(tData) setTeacherBookings(tData);
+      }
+    }catch(e){console.error(e);}
+    setLoadingB(false);
+  };
+
+  const checkApplication=async()=>{
+    try{
+      const uid=user.uid||user.phone;
+      const{data}=await supabase.from("teacher_applications").select("status").eq("firebase_uid",uid).order("created_at",{ascending:false}).limit(1).single();
+      if(data) setAppStatus(data.status);
+    }catch(e){}
+  };
+
   const upcoming=bookings.filter(b=>b.status==="confirmed");
   const history=bookings.filter(b=>b.status==="completed");
+  const teacherUpcoming=teacherBookings.filter(b=>b.status==="confirmed");
+  const teacherHistory=teacherBookings.filter(b=>b.status==="completed");
+  const totalEarnings=teacherBookings.reduce((a,b)=>a+(b.price||0),0);
+  const pendingEarnings=teacherUpcoming.reduce((a,b)=>a+(b.price||0),0);
+
+  const formatSlot=(slot)=>{
+    if(!slot) return "";
+    if(slot.includes("-")&&slot.length>10){
+      const[datePart,timePart]=slot.split(" ");
+      const d=new Date(datePart);
+      const months=isKa?["იან","თებ","მარ","აპრ","მაი","ივნ","ივლ","აგვ","სექ","ოქტ","ნოე","დეკ"]:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      return `${d.getDate()} ${months[d.getMonth()]} · ${timePart}`;
+    }
+    return slot;
+  };
+
   return(
-    <div style={{maxWidth:860,margin:"0 auto",padding:"40px 24px"}}>
-      <div style={{marginBottom:32}}>
+    <div style={{maxWidth:900,margin:"0 auto",padding:"40px 24px"}}>
+      <div style={{marginBottom:28}}>
         <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,fontWeight:700,marginBottom:4}}>{t.dh}</div>
         <div style={{fontSize:32,fontWeight:900,color:C.text,fontFamily:C.fb}}>{user.name} 👋</div>
       </div>
-      {appStatus==="pending"&&!isTutor&&(
-        <div style={{background:"#FFF8E0",border:`2px solid ${C.accent}44`,borderRadius:C.radiusLg,padding:"16px 20px",marginBottom:24,display:"flex",gap:12,alignItems:"center"}}>
-          <div style={{fontSize:24}}>⏳</div>
-          <div>
-            <div style={{fontSize:14,fontWeight:900,color:C.accent,fontFamily:C.fb}}>{isKa?"შენი განაცხადი განიხილება":"Your teacher application is under review"}</div>
-            <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:3}}>{isKa?"24 საათში გამოგიგზავნით პასუხს.":"We will get back to you within 24 hours."}</div>
-          </div>
-        </div>
-      )}
+
       {isTutor&&<>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:28}}>
-          {[[t.de,`₾${bookings.reduce((a,b)=>a+(b.price||0),0)}`,"#1CB0F6"],[t.dstu,`${new Set(bookings.map(b=>b.student_firebase_uid)).size}`,"#58CC02"],[t.dse,`${bookings.length}`,"#A259FF"]].map(([l,v,clr])=>(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:14,marginBottom:24}}>
+          {[[isKa?"მთლიანი":"Total",`₾${totalEarnings}`,"#1CB0F6"],[isKa?"მომლოდინე":"Pending",`₾${pendingEarnings}`,"#E9A520"],[isKa?"ჯავშანი":"Bookings",`${teacherBookings.length}`,"#A259FF"]].map(([l,v,clr])=>(
             <div key={l} style={{background:clr+"12",border:`2px solid ${clr}33`,borderRadius:C.radiusLg,padding:"20px 18px"}}>
               <div style={{fontSize:11,color:clr,fontFamily:C.fb,fontWeight:900,textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8}}>{l}</div>
               <div style={{fontSize:28,fontWeight:900,color:clr,fontFamily:C.fb}}>{v}</div>
             </div>
           ))}
         </div>
+        <div style={{marginBottom:20}}>
+          <button onClick={()=>onPromote&&onPromote()} style={{background:"linear-gradient(135deg,#E9A520,#FF7A00)",border:"none",borderRadius:C.radiusLg,padding:"11px 22px",fontSize:13,fontWeight:900,color:"#fff",cursor:"pointer",fontFamily:C.fb,boxShadow:"0 4px 0 #CC7700"}}
+            onMouseEnter={e=>e.currentTarget.style.transform="translateY(-2px)"}
+            onMouseLeave={e=>e.currentTarget.style.transform="none"}>
+            ✦ {isKa?"პრომოცია":"Promote my profile"}
+          </button>
+        </div>
       </>}
+
       {!isTutor&&!appStatus&&(
         <div style={{background:C.primaryLight,border:`2px solid ${C.primary}33`,borderRadius:C.radiusLg,padding:"18px 20px",marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"center",gap:16,flexWrap:"wrap"}}>
           <div>
-            <div style={{fontSize:14,fontWeight:900,color:C.primary,fontFamily:C.fb}}>{isKa?"გახდი მასწავლებელი Nateba-ზე":"Become a teacher on Nateba"}</div>
+            <div style={{fontSize:14,fontWeight:900,color:C.primary,fontFamily:C.fb}}>{isKa?"გახდი მასწავლებელი":"Become a teacher on Nateba"}</div>
             <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:3}}>{isKa?"გაუზიარე შენი ცოდნა და გამოიმუშავე.":"Share your knowledge and earn."}</div>
+          </div>
+          <PBtn onClick={onGoTeach} size="sm">{isKa?"განაცხადი":"Apply"}</PBtn>
+        </div>
+      )}
+
+      {appStatus==="pending"&&!isTutor&&(
+        <div style={{background:"#FFF8E0",border:`2px solid ${C.accent}44`,borderRadius:C.radiusLg,padding:"16px 20px",marginBottom:24,display:"flex",gap:12,alignItems:"center"}}>
+          <div style={{fontSize:24}}>⏳</div>
+          <div>
+            <div style={{fontSize:14,fontWeight:900,color:C.accent,fontFamily:C.fb}}>{isKa?"განაცხადი განიხილება":"Application under review"}</div>
+            <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:3}}>{isKa?"24 საათში გამოგიგზავნით პასუხს.":"We will get back to you within 24 hours."}</div>
           </div>
         </div>
       )}
+
       <div style={{display:"flex",gap:4,borderBottom:`2px solid ${C.border}`,marginBottom:20,overflowX:"auto"}}>
-        {(isTutor?[["upcoming",t.du],["inbox",t.dm],["history",isKa?"ისტორია":"History"]]:[["upcoming",t.du],["inbox",t.dm],["saved",isKa?"შენახული ♥":"Saved ♥"],["history",isKa?"ისტორია":"History"]]).map(([k,l])=>(
+        {(isTutor
+          ?[["teaching",isKa?"ჩემი მოსწავლეები 👨‍🏫":"My Students 👨‍🏫"],["upcoming",isKa?"ჩემი გაკვეთილები":"My Lessons"],["inbox",t.dm]]
+          :[["upcoming",t.du],["inbox",t.dm],["saved",isKa?"შენახული ♥":"Saved ♥"],["history",isKa?"ისტორია":"History"]]
+        ).map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"12px 20px",border:"none",background:"none",fontSize:14,fontWeight:900,fontFamily:C.fb,color:tab===k?C.accent:C.muted,borderBottom:`3px solid ${tab===k?C.accent:"transparent"}`,marginBottom:-2,cursor:"pointer",transition:"all 0.15s",whiteSpace:"nowrap"}}>{l}</button>
         ))}
       </div>
+
+      {tab==="teaching"&&<div>
+        {loadingB&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
+        {!loadingB&&teacherUpcoming.length===0&&(
+          <div style={{textAlign:"center",padding:"40px 24px"}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={80}/></div>
+            <div style={{fontSize:16,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{isKa?"ჯერ ჯავშანი არ არის":"No bookings yet"}</div>
+            <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{isKa?"როდესაც მოსწავლე დაჯავშნის, აქ გამოჩნდება.":"When a student books you, it will appear here."}</div>
+          </div>
+        )}
+        {!loadingB&&teacherUpcoming.map((b,i)=>(
+          <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:14,flexWrap:"wrap",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:46,height:46,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:15,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>
+                {(b.student_name||"S").slice(0,2).toUpperCase()}
+              </div>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.student_name||isKa?"მოსწავლე":"Student"}</div>
+                <div style={{fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:800}}>{b.skill}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>📅 {formatSlot(b.slot)}</div>
+                {b.student_email&&<div style={{fontSize:11,color:C.muted,fontFamily:C.fb}}>✉️ {b.student_email}</div>}
+              </div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
+              <div style={{fontSize:16,fontWeight:900,color:C.ok,fontFamily:C.fb}}>₾{b.price}</div>
+              <PBtn onClick={()=>onJoinVideo({name:b.student_name,skill:b.skill,cat:"tech",av:(b.student_name||"S").slice(0,2).toUpperCase()},b.slot)} size="sm">{t.dj}</PBtn>
+            </div>
+          </div>
+        ))}
+        {!loadingB&&teacherHistory.length>0&&<>
+          <div style={{fontSize:13,color:C.muted,fontFamily:C.fb,fontWeight:700,margin:"24px 0 12px",paddingTop:20,borderTop:`2px solid ${C.border}`}}>{isKa?"ისტორია":"History"}</div>
+          {teacherHistory.map((b,i)=>(
+            <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.student_name}</div>
+                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.skill} · {formatSlot(b.slot)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:14,fontWeight:900,color:C.ok,fontFamily:C.fb}}>₾{b.price}</div>
+                <div style={{fontSize:11,color:C.ok,fontFamily:C.fb,fontWeight:700}}>✓ {isKa?"დასრულდა":"Completed"}</div>
+              </div>
+            </div>
+          ))}
+        </>}
+      </div>}
+
       {tab==="upcoming"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
         {loadingB&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
         {!loadingB&&upcoming.map((b,i)=>(
           <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"18px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:14,flexWrap:"wrap"}}>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
-              <div style={{width:46,height:46,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:15,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>{(b.teacher_name||"T").slice(0,2).toUpperCase()}</div>
+              <div style={{width:46,height:46,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:15,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>
+                {(b.teacher_name||"T").slice(0,2).toUpperCase()}
+              </div>
               <div>
-                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.teacher_name||b.student_name}</div>
+                <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.teacher_name}</div>
                 <div style={{fontSize:12,color:C.primary,fontFamily:C.fb,fontWeight:800}}>{b.skill}</div>
-                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.slot}</div>
+                <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>📅 {formatSlot(b.slot)}</div>
               </div>
             </div>
             <PBtn onClick={()=>onJoinVideo({name:b.teacher_name,skill:b.skill,cat:"tech",av:(b.teacher_name||"T").slice(0,2).toUpperCase()},b.slot)} size="sm">{t.dj}</PBtn>
@@ -705,45 +813,63 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTe
           <div style={{textAlign:"center",padding:"32px 24px"}}>
             <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Hedgehog size={80}/></div>
             <div style={{color:C.muted,fontFamily:C.fb,fontSize:15,fontWeight:600}}>{t.dem}</div>
+            <div style={{marginTop:16}}><PBtn onClick={()=>onBrowse&&onBrowse()} size="sm">{isKa?"მასწავლებლის პოვნა":"Find a teacher"}</PBtn></div>
           </div>
         )}
       </div>}
-      {tab==="inbox"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <div style={{textAlign:"center",padding:"32px 24px",color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>{isKa?"შეტყობინებები მალე გამოჩნდება.":"Messages coming soon."}</div>
+
+      {tab==="inbox"&&<div style={{textAlign:"center",padding:"32px 24px",color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>
+        {isKa?"შეტყობინებები მალე გამოჩნდება.":"Messages coming soon."}
       </div>}
+
       {tab==="saved"&&<div>
-        <div style={{textAlign:"center",padding:"48px 24px"}}>
-          <div style={{fontSize:48,marginBottom:12}}>♡</div>
-          <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{isKa?"შენახული მასწავლებელი":"Saved teachers"}</div>
-          <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,fontWeight:600}}>{isKa?"მოძებნე და გული დააჭირე ბარათზე.":"Browse and tap the heart on teacher cards."}</div>
-        </div>
+        {(saved||[]).length===0
+          ?<div style={{textAlign:"center",padding:"48px 24px"}}>
+            <div style={{fontSize:48,marginBottom:12}}>♡</div>
+            <div style={{fontSize:18,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:6}}>{isKa?"შენახული მასწავლებელი არ არის":"No saved teachers yet"}</div>
+            <div style={{fontSize:14,color:C.muted,fontFamily:C.fb,marginBottom:24,fontWeight:600}}>{isKa?"გული დააჭირე ბარათზე.":"Tap the heart on any teacher card to save them here."}</div>
+          </div>
+          :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {TEACHERS.filter(tv=>(saved||[]).includes(tv.id)).map(tv=>{
+              const catColor=CAT_COLORS[tv.cat]||C.primary;
+              return(
+                <div key={tv.id} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 18px",display:"flex",gap:12,alignItems:"center"}}>
+                  <Av initials={tv.av} bg={catColor} size={46}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{tv.name}</div>
+                    <div style={{fontSize:12,color:catColor,fontFamily:C.fb,fontWeight:800}}>{tv.skill}</div>
+                    <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>₾{tv.price}/session</div>
+                  </div>
+                  <PBtn onClick={()=>onOpenTeacher&&onOpenTeacher(tv)} size="sm">{isKa?"ნახვა":"View"}</PBtn>
+                </div>
+              );
+            })}
+          </div>
+        }
       </div>}
+
       {tab==="history"&&<div>
         {loadingB&&<div style={{textAlign:"center",padding:32,color:C.muted,fontFamily:C.fb}}>Loading...</div>}
         {!loadingB&&history.length===0&&<div style={{textAlign:"center",padding:"32px 24px",color:C.muted,fontFamily:C.fb,fontSize:14,fontWeight:600}}>{isKa?"დასრულებული გაკვეთილი არ არის.":"No completed sessions yet."}</div>}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {history.map((b,i)=>(
             <div key={i} style={{background:C.bg2,border:`2px solid ${C.border}`,borderRadius:C.radiusLg,padding:"16px 18px",display:"flex",alignItems:"center",gap:14}}>
-              <div style={{width:44,height:44,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>{(b.teacher_name||"T").slice(0,2).toUpperCase()}</div>
+              <div style={{width:44,height:44,borderRadius:"50%",background:C.primary,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:14,fontWeight:900,fontFamily:C.fb,flexShrink:0}}>
+                {(b.teacher_name||"T").slice(0,2).toUpperCase()}
+              </div>
               <div style={{flex:1}}>
                 <div style={{fontSize:14,fontWeight:900,color:C.text,fontFamily:C.fb}}>{b.teacher_name}</div>
-                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.slot} · ₾{b.price}</div>
+                <div style={{fontSize:12,color:C.muted,fontFamily:C.fb,marginTop:2}}>{b.skill} · {formatSlot(b.slot)}</div>
               </div>
               <div style={{fontSize:11,color:C.ok,fontFamily:C.fb,fontWeight:700}}>✓ {isKa?"დასრულდა":"Completed"}</div>
             </div>
           ))}
         </div>
       </div>}
-      {showStu&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9996,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div style={{background:C.card,borderRadius:C.radiusLg,padding:28,maxWidth:360,width:"100%",boxShadow:C.shadowLg,border:`2px solid ${C.border}`}}>
-            <PBtn onClick={()=>setShowStu(null)} full>Close</PBtn>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
+
 
 const LegalPage=({type,lang,onBack})=>{
   const t=T[lang];const isTos=type==="tos";
