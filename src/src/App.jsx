@@ -337,7 +337,7 @@ const PostSession=({teacher,lang,onClose})=>{
   );
 };
 
-const VideoRoom=({teacher,slot,lang,onClose})=>{
+const VideoRoom=({teacher,slot,bookingRoom,lang,onClose})=>{
   const containerRef=useRef(null);
   const callFrameRef=useRef(null);
   const hasJoinedRef=useRef(false);
@@ -346,7 +346,17 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState(null);
 
-  const roomName=(()=>{const t=teacher.name.replace(/\s+/g,"-").toLowerCase().slice(0,10);const s=(slot||"session").replace(/[\s:]/g,"-").slice(0,10);return `nt-${t}-${s}`.replace(/[^a-z0-9-]/g,"-").slice(0,35);})();
+  const roomName=(()=>{
+    // Use the booking's video_room if available — guarantees teacher and student join same room
+    if(bookingRoom) return bookingRoom.replace(/[^a-z0-9-]/g,"-").slice(0,40);
+    if(slot&&slot.length>8){
+      const dateStr=slot.split(" ")[0].replace(/-/g,"").slice(2);
+      const teacherShort=(teacher.firebase_uid||teacher.name||"t").replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,8);
+      return `nt-${teacherShort}-${dateStr}`.slice(0,40);
+    }
+    const teacherShort=(teacher.firebase_uid||teacher.name||"t").replace(/[^a-z0-9]/gi,"").toLowerCase().slice(0,8);
+    return `nt-${teacherShort}`.slice(0,40);
+  })();
 
   useEffect(()=>{
     let cancelled=false;
@@ -836,7 +846,7 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTe
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:8}}>
               <div style={{fontSize:16,fontWeight:900,color:C.ok,fontFamily:C.fb}}>₾{b.price}</div>
-              <PBtn onClick={()=>onJoinVideo({name:b.student_name,skill:b.skill,cat:"tech",av:(b.student_name||"S").slice(0,2).toUpperCase()},b.slot)} size="sm">{t.dj}</PBtn>
+              <PBtn onClick={()=>onJoinVideo({name:b.teacher_name||user.name,skill:b.skill,cat:"tech",av:(b.teacher_name||user.name||"T").slice(0,2).toUpperCase(),firebase_uid:b.teacher_firebase_uid||user.uid},b.slot,b.video_room)} size="sm">{t.dj}</PBtn>
             </div>
           </div>
         ))}
@@ -871,7 +881,7 @@ const Dashboard=({user,lang,onJoinVideo,onMsg,onGoTeach,onPromote,saved,onOpenTe
                 <div style={{fontSize:11,color:C.muted,fontFamily:C.fb,marginTop:2}}>📅 {formatSlot(b.slot)}</div>
               </div>
             </div>
-            <PBtn onClick={()=>onJoinVideo({name:b.teacher_name,skill:b.skill,cat:"tech",av:(b.teacher_name||"T").slice(0,2).toUpperCase()},b.slot)} size="sm">{t.dj}</PBtn>
+            <PBtn onClick={()=>onJoinVideo({name:b.teacher_name,skill:b.skill,cat:"tech",av:(b.teacher_name||"T").slice(0,2).toUpperCase(),firebase_uid:b.teacher_firebase_uid},b.slot,b.video_room)} size="sm">{t.dj}</PBtn>
           </div>
         ))}
         {!loadingB&&upcoming.length===0&&(
@@ -1676,6 +1686,7 @@ export default function App(){
   const [authMode,setAuthMode]=useState(null);
   const [videoT,setVideoT]=useState(null);
   const [videoSlot,setVideoSlot]=useState(null);
+  const [videoRoom,setVideoRoom]=useState(null);
   const [payment,setPayment]=useState(null);
   const [msgT,setMsgT]=useState(null);
   const [toast,setToast]=useState(null);
@@ -2043,7 +2054,7 @@ export default function App(){
       {page==="teacher"&&<TeacherProfile/>}
       {page==="groups"&&<GroupsPage/>}
       {page==="teach"&&<TeachPage lang={lang} onBack={()=>go("home")} user={user} onLogin={(mode)=>setAuthMode(mode)}/>}
-      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl)=>{setVideoT(tv);setVideoSlot(sl);}} onMsg={setMsgT}/>}
+      {page==="dashboard"&&user&&<Dashboard user={user} lang={lang} onJoinVideo={(tv,sl,bookingRoom)=>{setVideoT(tv);setVideoSlot(sl);setVideoRoom(bookingRoom||null);}} onMsg={setMsgT}/>}
       {page==="tos"&&<LegalPage type="tos" lang={lang} onBack={()=>go("home")}/>}
       {page==="pp"&&<LegalPage type="pp" lang={lang} onBack={()=>go("home")}/>}
       {page==="faq"&&<FAQPage lang={lang} onBack={()=>go("home")}/>}
@@ -2054,7 +2065,7 @@ export default function App(){
       {showPromote&&<PromoteModal lang={lang} onClose={()=>setShowPromote(false)}/>}
       {authMode&&<AuthModal mode={authMode} lang={lang} onAuth={u=>{setUser(u);try{localStorage.setItem("nateba_user",JSON.stringify(u));}catch{}setAuthMode(null);setToast({msg:lang==="ka"?`კეთილი იყოს, ${u.name}! 🎉`:`Welcome, ${u.name}! 🎉`});}} onClose={()=>setAuthMode(null)}/>}
       {payment&&<PayModal item={payment.item} slot={payment.slot} lang={lang} user={user} onSuccess={()=>{setToast({msg:"Session booked! 🎉"});setPayment(null);go("dashboard");}} onClose={()=>setPayment(null)}/>}
-      {videoT&&<VideoRoom teacher={videoT} slot={videoSlot} lang={lang} onClose={()=>{setVideoT(null);setVideoSlot(null);}}/>}
+      {videoT&&<VideoRoom teacher={videoT} slot={videoSlot} bookingRoom={videoRoom} lang={lang} onClose={()=>{setVideoT(null);setVideoSlot(null);setVideoRoom(null);}}/>}
       {msgT&&<MsgModal teacher={msgT} lang={lang} onClose={()=>setMsgT(null)}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
       {mobileMenu&&<div onClick={()=>setMobileMenu(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:8000}}/>}
