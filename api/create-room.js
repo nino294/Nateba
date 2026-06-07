@@ -3,7 +3,6 @@ export default async function handler(req, res) {
   const { roomName } = req.body;
   const token = process.env.DAILY_API_KEY;
 
-  // Clean name: only letters, numbers, dashes, max 40 chars
   const cleanName = (roomName || "room")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "-")
@@ -17,18 +16,17 @@ export default async function handler(req, res) {
   };
 
   try {
-    // Try to get existing room first
     const getRes = await fetch(`https://api.daily.co/v1/rooms/${cleanName}`, { method:"GET", headers });
     const getData = await getRes.json();
     if (getData.url) return res.status(200).json({ url: getData.url });
 
-    // Create new room
     const createRes = await fetch("https://api.daily.co/v1/rooms", {
       method: "POST",
       headers,
       body: JSON.stringify({
         name: cleanName,
         properties: {
+          enable_prejoin_ui: false,
           exp: Math.floor(Date.now() / 1000) + 60 * 60 * 4,
         },
       }),
