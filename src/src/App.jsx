@@ -355,7 +355,7 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
           <PBtn onClick={()=>setEnded(true)} size="sm" variant="red">End session</PBtn>
         </div>
       </div>
-      <iframe src={`https://meet.jit.si/${room}`} style={{flex:1,border:"none"}} allow="camera; microphone; fullscreen; display-capture" title="Session"/>
+      <iframe src={`https://8x8.vc/${room}`} style={{flex:1,border:"none"}} allow="camera; microphone; fullscreen; display-capture" title="Session"/>
       {showRep&&<ReportModal teacher={teacher} lang={lang} onClose={()=>setShowRep(false)}/>}
     </div>
   );
