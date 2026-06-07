@@ -6,7 +6,7 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.VITE_DAILY_API_KEY}`,
+        Authorization: `Bearer ${process.env.DAILY_API_KEY}`,
       },
       body: JSON.stringify({
         name: roomName,
