@@ -1036,10 +1036,9 @@ const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS_EN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const MONTHS_KA = ["იანვარი","თებერვალი","მარტი","აპრილი","მაისი","ივნისი","ივლისი","აგვისტო","სექტემბერი","ოქტომბერი","ნოემბერი","დეკემბერი"];
 
-const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot})=>{
+const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot,selectedDate,onDateSelect})=>{
   const isKa=lang==="ka";
   const [currentDate,setCurrentDate]=useState(new Date());
-  const [selectedDate,setSelectedDate]=useState(null);
   const [bookedSlots,setBookedSlots]=useState([]);
   const [loadingBooked,setLoadingBooked]=useState(false);
 
@@ -1136,7 +1135,7 @@ const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot})=>{
           const isPast=date<today;
 
           return(
-            <button key={i} onClick={()=>{if(available){setSelectedDate(date);onSelect(null);}}}
+            <button key={i} onClick={()=>{if(available){onDateSelect(date);onSelect(null);}}}
               disabled={!available}
               style={{
                 aspectRatio:"1",
@@ -1205,6 +1204,7 @@ const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot})=>{
 const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
   const catColor=CAT_COLORS[tv.cat]||C.primary;
   const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
+  const [calendarDate,setCalendarDate]=useState(null);
   useEffect(()=>{
     setProfileSlots(tv.slots||[]);
     if(tv.firebase_uid){
@@ -1278,6 +1278,8 @@ const TeacherProfileView=({tv,lang,t,slot,setSlot,user,setAuthMode,setPayment,se
                   lang={lang}
                   onSelect={setSlot}
                   selectedSlot={slot}
+                  selectedDate={calendarDate}
+                  onDateSelect={setCalendarDate}
                 />
               }
             </div>
