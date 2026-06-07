@@ -1204,7 +1204,6 @@ const BookingCalendar=({teacherId,availableSlots,lang,onSelect,selectedSlot,sele
 const TeacherProfileView=({tv,lang,t,slot,setSlot,calendarDate,setCalendarDate,user,setAuthMode,setPayment,setMsgT,setVideoT,setVideoSlot,pTab,setPTab,go})=>{
   const catColor=CAT_COLORS[tv.cat]||C.primary;
   const [profileSlots,setProfileSlots]=useState(tv.slots||[]);
-  const [calendarDate,setCalendarDate]=useState(null);
   useEffect(()=>{
     setProfileSlots(tv.slots||[]);
     if(tv.firebase_uid){
@@ -1481,6 +1480,7 @@ export default function App(){
   const [catF,setCatF]=useState("all");
   const [pTab,setPTab]=useState("about");
   const [slot,setSlot]=useState(null);
+  const [calendarDate,setCalendarDate]=useState(null);
   const [user,setUser]=useState(()=>{try{const s=localStorage.getItem("nateba_user");return s?JSON.parse(s):null;}catch{return null;}});
   const [authMode,setAuthMode]=useState(null);
   const [videoT,setVideoT]=useState(null);
