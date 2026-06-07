@@ -321,6 +321,9 @@ const PostSession=({teacher,lang,onClose})=>{
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9997,display:"flex",alignItems:"center",justifyContent:"center",padding:20,backdropFilter:"blur(4px)"}}>
       <div style={{background:C.card,borderRadius:C.radiusLg,padding:32,maxWidth:420,width:"100%",boxShadow:C.shadowLg}}>
+        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+          <button onClick={onClose} style={{background:C.bg2,border:"none",borderRadius:C.radiusSm,width:32,height:32,fontSize:16,cursor:"pointer",color:C.muted,fontWeight:700}}>×</button>
+        </div>
         <div style={{textAlign:"center",marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Av initials={teacher.av} bg={CAT_COLORS[teacher.cat]||C.primary} size={64}/></div>
           <div style={{fontSize:20,fontWeight:900,color:C.text,fontFamily:C.fb,marginBottom:4}}>{t.rtt}</div>
@@ -331,6 +334,9 @@ const PostSession=({teacher,lang,onClose})=>{
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:8}}>
           <OBtn onClick={()=>setShowRep(true)} full>{t.rtr}</OBtn>
           <PBtn onClick={()=>setDone(true)} disabled={rating===0} full>{t.rtb}</PBtn>
+        </div>
+        <div style={{textAlign:"center",marginTop:12}}>
+          <button onClick={onClose} style={{background:"none",border:"none",color:C.muted,fontFamily:C.fb,fontSize:13,cursor:"pointer",fontWeight:700}}>{lang==="ka"?"გამოტოვება":"Skip"}</button>
         </div>
       </div>
     </div>
