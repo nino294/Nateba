@@ -340,6 +340,7 @@ const PostSession=({teacher,lang,onClose})=>{
 const VideoRoom=({teacher,slot,lang,onClose})=>{
   const containerRef=useRef(null);
   const callFrameRef=useRef(null);
+  const hasJoinedRef=useRef(false);
   const [ended,setEnded]=useState(false);
   const [showRep,setShowRep]=useState(false);
   const [loading,setLoading]=useState(true);
@@ -367,12 +368,12 @@ const VideoRoom=({teacher,slot,lang,onClose})=>{
         if(!containerRef.current)return;
         const frame=window.DailyIframe.createFrame(containerRef.current,{
           iframeStyle:{width:"100%",height:"100%",border:"none"},
-          showLeaveButton:false,
+          showLeaveButton:true,
           showFullscreenButton:true,
         });
         callFrameRef.current=frame;
-        frame.on("joined-meeting",()=>{if(!cancelled)setLoading(false);});
-        frame.on("left-meeting",()=>{if(!cancelled)setEnded(true);});
+        frame.on("joined-meeting",()=>{if(!cancelled){hasJoinedRef.current=true;setLoading(false);}});
+        frame.on("left-meeting",()=>{if(!cancelled&&hasJoinedRef.current)setEnded(true);});
         frame.on("error",()=>{if(!cancelled){setError("Connection error. Please try again.");setLoading(false);}});
         await frame.join({url:data.url});
       }catch(e){
